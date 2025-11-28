@@ -21,7 +21,8 @@ import {
   Users,
   LogOut,
   ShieldAlert,
-  X
+  X,
+  Menu
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -446,6 +447,7 @@ function App() {
   const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [error, setError] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // --- Initial Load (Supabase) ---
   useEffect(() => {
@@ -559,31 +561,36 @@ function App() {
   }
 
   return (
-    <div className={`flex h-screen bg-gray-50 font-sans text-gray-900 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`} dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className={`flex h-screen bg-gray-50 ${isRTL ? 'direction-rtl' : 'direction-ltr'} overflow-hidden`}>
+
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`w-64 bg-white border-r border-gray-200 flex flex-col ${isRTL ? 'border-l border-r-0' : ''}`}>
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-          <div>
-            <h1 className="text-xl font-bold text-blue-600">Mabox.ma</h1>
-            <p className="text-xs text-gray-500 mt-1">{t('welcome')}, {currentUser.name}</p>
+      <aside className={`
+        fixed md:relative z-50 h-full
+        transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? 'translate-x-0' : (isRTL ? 'translate-x-full' : '-translate-x-full')} md:translate-x-0
+        w-64 bg-white border-r border-gray-200 flex flex-col
+      `}>
+        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+          <div className="flex items-center space-x-3">
+            <div className="bg-blue-600 p-2 rounded-lg">
+              <LayoutDashboard className="text-white" size={24} />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">Mabox.ma</h1>
           </div>
+          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-500">
+            <X size={24} />
+          </button>
         </div>
 
-        <div className="px-4 pt-4">
-          <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
-            {['en', 'fr', 'ar'].map(lang => (
-              <button
-                key={lang}
-                onClick={() => setLanguage(lang)}
-                className={`flex-1 text-xs py-1 rounded-md uppercase font-bold ${language === lang ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}
-              >
-                {lang}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <NavItem id="dashboard" icon={LayoutDashboard} label={t('dashboard')} />
           <NavItem id="transactions" icon={ArrowRightLeft} label={t('transactions')} />
           <NavItem id="inventory" icon={Package} label={t('inventory')} />
@@ -596,7 +603,39 @@ function App() {
           )}
         </nav>
 
-        <div className="p-4 border-t border-gray-100">
+        <div className="p-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-4 px-2">
+            <span className="text-sm font-medium text-gray-600">Language</span>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-2 py-1 rounded text-xs ${language === 'en' ? 'bg-blue-100 text-blue-700' : 'text-gray-500'}`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLanguage('fr')}
+                className={`px-2 py-1 rounded text-xs ${language === 'fr' ? 'bg-blue-100 text-blue-700' : 'text-gray-500'}`}
+              >
+                FR
+              </button>
+              <button
+                onClick={() => setLanguage('ar')}
+                className={`px-2 py-1 rounded text-xs ${language === 'ar' ? 'bg-blue-100 text-blue-700' : 'text-gray-500'}`}
+              >
+                AR
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg mb-2">
+            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+              {currentUser.name[0]}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
+              <p className="text-xs text-gray-500 capitalize">{t(currentUser.role)}</p>
+            </div>
+          </div>
           <button
             onClick={() => setCurrentUser(null)}
             className="flex items-center space-x-3 w-full p-3 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
@@ -607,84 +646,108 @@ function App() {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8">
-        <header className="flex justify-between items-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-800 capitalize">{t(view)}</h2>
-          <div className="text-sm text-gray-500">
-            {new Date().toLocaleDateString(language === 'ar' ? 'ar-MA' : language === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      {/* Main Content Wrapper */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Mobile Header */}
+        <header className="md:hidden bg-white border-b border-gray-200 p-4 flex items-center justify-between z-30">
+          <div className="flex items-center space-x-2">
+            <div className="bg-blue-600 p-1.5 rounded-lg">
+              <LayoutDashboard className="text-white" size={20} />
+            </div>
+            <h1 className="font-bold text-lg text-gray-800">Mabox.ma</h1>
           </div>
+          <button onClick={() => setIsSidebarOpen(true)} className="text-gray-600 p-1">
+            <Menu size={24} />
+          </button>
         </header>
 
-        {/* Views */}
-        {view === 'dashboard' && (
-          <Dashboard
-            totalIncome={totalIncome}
-            totalExpenses={totalExpenses}
-            netProfit={netProfit}
-            inventoryValue={inventoryValue}
-            transactions={transactions}
-            t={t}
-          />
-        )}
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          <header className="hidden md:flex justify-between items-center mb-8">
+            <h2 className="text-3xl font-bold text-gray-800 capitalize">{t(view)}</h2>
+            <div className="text-sm text-gray-500">
+              {new Date().toLocaleDateString(language === 'ar' ? 'ar-MA' : language === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
+          </header>
 
-        {view === 'transactions' && (
-          <TransactionManager
-            transactions={transactions}
-            setTransactions={setTransactions}
-            inventory={inventory}
-            setInventory={setInventory}
-            deliveryConfig={deliveryConfig}
-            packagingConfig={packagingConfig}
-            t={t}
-          />
-        )}
-
-        {view === 'inventory' && (
-          <InventoryManager
-            inventory={inventory}
-            setInventory={setInventory}
-            t={t}
-          />
-        )}
-
-        {view === 'reports' && currentUser.role === 'admin' && (
-          <ReportView
-            transactions={transactions}
-            totalIncome={totalIncome}
-            totalExpenses={totalExpenses}
-            netProfit={netProfit}
-            t={t}
-          />
-        )}
-
-        {view === 'settings' && currentUser.role === 'admin' && (
-          <SettingsView
-            deliveryConfig={deliveryConfig}
-            setDeliveryConfig={setDeliveryConfig}
-            packagingConfig={packagingConfig}
-            setPackagingConfig={setPackagingConfig}
-            t={t}
-          />
-        )}
-
-        {view === 'users' && currentUser.role === 'admin' && (
-          <UserManagement
-            users={users}
-            setUsers={setUsers}
-            t={t}
-          />
-        )}
-
-        {/* Access Denied Fallback */}
-        {['reports', 'settings', 'users'].includes(view) && currentUser.role !== 'admin' && (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-            <ShieldAlert size={48} className="mb-4 text-red-500" />
-            <h3 className="text-xl font-bold">{t('accessDenied')}</h3>
-            <p>{t('adminOnly')}</p>
+          {/* Mobile Page Title */}
+          <div className="md:hidden mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 capitalize">{t(view)}</h2>
+            <div className="text-xs text-gray-500 mt-1">
+              {new Date().toLocaleDateString(language === 'ar' ? 'ar-MA' : language === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
           </div>
-        )}
-      </main>
+
+          {/* Views */}
+          {view === 'dashboard' && (
+            <Dashboard
+              totalIncome={totalIncome}
+              totalExpenses={totalExpenses}
+              netProfit={netProfit}
+              inventoryValue={inventoryValue}
+              transactions={transactions}
+              t={t}
+            />
+          )}
+
+          {view === 'transactions' && (
+            <TransactionManager
+              transactions={transactions}
+              setTransactions={setTransactions}
+              inventory={inventory}
+              setInventory={setInventory}
+              deliveryConfig={deliveryConfig}
+              packagingConfig={packagingConfig}
+              t={t}
+            />
+          )}
+
+          {view === 'inventory' && (
+            <InventoryManager
+              inventory={inventory}
+              setInventory={setInventory}
+              t={t}
+            />
+          )}
+
+          {view === 'reports' && currentUser.role === 'admin' && (
+            <ReportView
+              transactions={transactions}
+              totalIncome={totalIncome}
+              totalExpenses={totalExpenses}
+              netProfit={netProfit}
+              t={t}
+            />
+          )}
+
+          {view === 'settings' && currentUser.role === 'admin' && (
+            <SettingsView
+              deliveryConfig={deliveryConfig}
+              setDeliveryConfig={setDeliveryConfig}
+              packagingConfig={packagingConfig}
+              setPackagingConfig={setPackagingConfig}
+              t={t}
+            />
+          )}
+
+          {view === 'users' && currentUser.role === 'admin' && (
+            <UserManagement
+              users={users}
+              setUsers={setUsers}
+              t={t}
+            />
+          )}
+
+          {/* Access Denied Fallback */}
+          {['reports', 'settings', 'users'].includes(view) && currentUser.role !== 'admin' && (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+              <ShieldAlert size={48} className="mb-4 text-red-500" />
+              <h3 className="text-xl font-bold">{t('accessDenied')}</h3>
+              <p>{t('adminOnly')}</p>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
@@ -705,14 +768,14 @@ const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, tran
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <h3 className="text-lg font-semibold mb-4">{t('recentActivity')}</h3>
-        <div className="overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('date')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('type')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('details')}</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('amount')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('date')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('type')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('details')}</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('amount')}</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -1061,7 +1124,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
           <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h4 className="text-lg font-bold mb-4">{t('newTransaction')}</h4>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{t('date')}</label>
                   <input
@@ -1121,7 +1184,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 </datalist>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{t('phone')}</label>
                   <input
@@ -1143,7 +1206,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               </div>
 
               {formData.type !== 'expense' && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">{t('quantity')}</label>
                     <input
@@ -1169,9 +1232,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               )}
 
               {formData.type === 'sale' && (
-                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
                   {/* Delivery Selection */}
-                  <div className="col-span-2 md:col-span-1">
+                  <div>
                     <label className="block text-sm font-medium text-gray-700">{t('delivery')}</label>
                     <select
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 mb-2"
@@ -1209,7 +1272,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                   </div>
 
                   {/* Packaging Selection */}
-                  <div className="col-span-2 md:col-span-1">
+                  <div>
                     <label className="block text-sm font-medium text-gray-700">{t('packaging')}</label>
                     <select
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 mb-2"
@@ -1296,58 +1359,60 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('date')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('type')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('client')}/{t('supplier')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('details')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('amount')}</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredTransactions.map(tItem => (
-              <tr key={tItem.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                    ${tItem.type === 'sale' ? 'bg-green-100 text-green-800' :
-                      tItem.type === 'purchase' ? 'bg-blue-100 text-blue-800' :
-                        'bg-red-100 text-red-800'
-                    }`}>
-                    {t(tItem.type)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {tItem.itemId ? (inventory.find(i => i.id === tItem.itemId)?.name || 'Unknown Item') : tItem.category}
-                  {tItem.quantity && ` x${tItem.quantity}`}
-                </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                  {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount || 0)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => handleEdit(tItem)} className="text-blue-600 hover:text-blue-900 mr-4">
-                    <Edit size={18} />
-                  </button>
-                  <button onClick={() => handleDelete(tItem.id)} className="text-red-600 hover:text-red-900">
-                    <Trash2 size={18} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {filteredTransactions.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
-                  {t('noTransactions')}
-                </td>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('date')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('type')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('client')}/{t('supplier')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('details')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('amount')}</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('actions')}</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredTransactions.map(tItem => (
+                <tr key={tItem.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                    ${tItem.type === 'sale' ? 'bg-green-100 text-green-800' :
+                        tItem.type === 'purchase' ? 'bg-blue-100 text-blue-800' :
+                          'bg-red-100 text-red-800'
+                      }`}>
+                      {t(tItem.type)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {tItem.itemId ? (inventory.find(i => i.id === tItem.itemId)?.name || 'Unknown Item') : tItem.category}
+                    {tItem.quantity && ` x${tItem.quantity}`}
+                  </td>
+                  <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                    {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount || 0)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onClick={() => handleEdit(tItem)} className="text-blue-600 hover:text-blue-900 mr-4">
+                      <Edit size={18} />
+                    </button>
+                    <button onClick={() => handleDelete(tItem.id)} className="text-red-600 hover:text-red-900">
+                      <Trash2 size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredTransactions.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                    {t('noTransactions')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -1498,7 +1563,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{t('quantity')}</label>
                   <input
@@ -1541,59 +1606,61 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('item')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('quantity')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('buyPrice')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('sellPrice')}</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('inventoryValue')}</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {inventory.map(item => (
-              <tr key={item.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                  {parseInt(item.quantity) <= parseInt(item.low_stock_threshold) && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                      {t('lowStock')}
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.quantity}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatCurrency(item.buy_price)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatCurrency(item.sell_price)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatCurrency(item.quantity * item.buy_price)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-900 mr-4">
-                    <Edit size={18} />
-                  </button>
-                  <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">
-                    <Trash2 size={18} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {inventory.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
-                  {t('noInventory')}
-                </td>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('quantity')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('buyPrice')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('sellPrice')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('inventoryValue')}</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('actions')}</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {inventory.map(item => (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                    {parseInt(item.quantity) <= parseInt(item.low_stock_threshold) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                        {t('lowStock')}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.quantity}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatCurrency(item.buy_price)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatCurrency(item.sell_price)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatCurrency(item.quantity * item.buy_price)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-900 mr-4">
+                      <Edit size={18} />
+                    </button>
+                    <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">
+                      <Trash2 size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {inventory.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                    {t('noInventory')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
