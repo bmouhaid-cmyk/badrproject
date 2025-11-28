@@ -856,6 +856,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     const { data: txData, error: txError } = await supabase.from('transactions').insert([dbTransaction]).select();
 
     if (txData) {
+      // Manual State Update for Transaction
+      setTransactions(prev => [txData[0], ...prev]);
+
       // Inventory Logic (Supabase)
       if (formData.type === 'sale' && formData.itemId) {
         const item = inventory.find(i => i.id === formData.itemId);
@@ -866,6 +869,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
           }
           const newQty = parseInt(item.quantity) - parseInt(formData.quantity);
           await supabase.from('inventory').update({ quantity: newQty }).eq('id', formData.itemId);
+
+          // Manual State Update for Inventory
+          setInventory(prev => prev.map(i => i.id === formData.itemId ? { ...i, quantity: newQty } : i));
         }
       } else if (formData.type === 'purchase' && formData.itemId) {
         const item = inventory.find(i => i.id === formData.itemId);
@@ -881,6 +887,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
           const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
 
           await supabase.from('inventory').update({ quantity: totalQty, buy_price: newBuyPrice }).eq('id', formData.itemId);
+
+          // Manual State Update for Inventory
+          setInventory(prev => prev.map(i => i.id === formData.itemId ? { ...i, quantity: totalQty, buy_price: newBuyPrice } : i));
         }
       }
 
@@ -1274,23 +1283,44 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const dbItem = {
-      name: formData.name,
-      quantity: parseInt(formData.quantity),
-      buy_price: parseFloat(formData.buyPrice),
-      sell_price: parseFloat(formData.sellPrice),
-      low_stock_threshold: parseInt(formData.lowStockThreshold)
-    };
+    console.log('Submitting Inventory Item:', formData);
 
-    if (isEditing) {
-      await supabase.from('inventory').update(dbItem).eq('id', formData.id);
-    } else {
-      await supabase.from('inventory').insert([dbItem]);
+    try {
+      const dbItem = {
+        name: formData.name,
+        quantity: parseInt(formData.quantity) || 0,
+        buy_price: parseFloat(formData.buyPrice) || 0,
+        sell_price: parseFloat(formData.sellPrice) || 0,
+        low_stock_threshold: parseInt(formData.lowStockThreshold) || 0
+      };
+
+      if (isEditing) {
+        const { error: updateError } = await supabase.from('inventory').update(dbItem).eq('id', formData.id);
+        error = updateError;
+        if (!error) {
+          setInventory(prev => prev.map(item => item.id === formData.id ? { ...item, ...dbItem } : item));
+        }
+      } else {
+        const { data, error: insertError } = await supabase.from('inventory').insert([dbItem]).select();
+        error = insertError;
+        if (!error && data) {
+          setInventory(prev => [...prev, data[0]]);
+        }
+      }
+
+      if (error) {
+        console.error('Supabase Error:', error);
+        alert('Error saving item: ' + error.message);
+        return;
+      }
+
+      setShowForm(false);
+      setFormData({ name: '', quantity: '', buyPrice: '', sellPrice: '', lowStockThreshold: 5 });
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Unexpected Error:', err);
+      alert('An unexpected error occurred.');
     }
-
-    setShowForm(false);
-    setFormData({ name: '', quantity: '', buyPrice: '', sellPrice: '', lowStockThreshold: 5 });
-    setIsEditing(false);
   };
 
   const handleEdit = (item) => {
