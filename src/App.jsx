@@ -1294,6 +1294,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
         low_stock_threshold: parseInt(formData.lowStockThreshold) || 0
       };
 
+      let error = null;
       if (isEditing) {
         const { error: updateError } = await supabase.from('inventory').update(dbItem).eq('id', formData.id);
         error = updateError;
