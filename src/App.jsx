@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useReactToPrint } from 'react-to-print';
 import * as XLSX from 'xlsx';
 import {
   LayoutDashboard,
@@ -15,8 +16,12 @@ import {
   TrendingDown,
   AlertTriangle,
   Download,
-  Settings
+  Settings,
+  Users,
+  LogOut,
+  ShieldAlert
 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // --- Utility Functions ---
 const formatCurrency = (amount) => {
@@ -25,10 +30,410 @@ const formatCurrency = (amount) => {
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
+// --- Translations ---
+const translations = {
+  en: {
+    dashboard: 'Dashboard',
+    transactions: 'Transactions',
+    inventory: 'Inventory',
+    reports: 'Reports',
+    settings: 'Settings',
+    totalIncome: 'Total Income',
+    totalExpenses: 'Total Expenses',
+    netProfit: 'Net Profit',
+    inventoryValue: 'Inventory Value',
+    recentActivity: 'Recent Activity',
+    date: 'Date',
+    type: 'Type',
+    details: 'Details',
+    amount: 'Amount',
+    actions: 'Actions',
+    newTransaction: 'New Transaction',
+    exportExcel: 'Export Excel',
+    filter: 'Filter',
+    save: 'Save',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    edit: 'Edit',
+    sale: 'Sale',
+    purchase: 'Purchase',
+    expense: 'Expense',
+    client: 'Client',
+    supplier: 'Supplier/Payee',
+    item: 'Item',
+    quantity: 'Quantity',
+    unitPrice: 'Unit Price',
+    delivery: 'Delivery',
+    packaging: 'Packaging',
+    notes: 'Notes',
+    addItem: 'Add Item',
+    itemName: 'Item Name',
+    buyPrice: 'Buy Price',
+    sellPrice: 'Sell Price',
+    lowStock: 'Low Stock',
+    financialReport: 'Financial Report',
+    shareSummary: 'Share Summary',
+    printReport: 'Print Report',
+    deliveryConfig: 'Delivery Configuration',
+    packagingConfig: 'Packaging Configuration',
+    addCompany: 'Add Company',
+    addOption: 'Add Option',
+    name: 'Name',
+    cost: 'Cost',
+    city: 'City',
+    rates: 'Rates',
+    noActivity: 'No recent activity',
+    noTransactions: 'No transactions found.',
+    noInventory: 'No items in inventory.',
+    deleteConfirm: 'Are you sure?',
+    stockInsufficient: 'Insufficient stock!',
+    lowStockAlert: 'Low Stock Alert',
+    users: 'Users',
+    addUser: 'Add User',
+    pin: 'PIN',
+    role: 'Role',
+    admin: 'Admin',
+    staff: 'Staff',
+    login: 'Login',
+    logout: 'Logout',
+    welcome: 'Welcome',
+    accessDenied: 'Access Denied',
+    incorrectPin: 'Incorrect PIN',
+    income: 'Income',
+    expenses: 'Expenses',
+    incomeVsExpenses: 'Income vs Expenses',
+    profit: 'Profit'
+  },
+  fr: {
+    dashboard: 'Tableau de bord',
+    transactions: 'Transactions',
+    inventory: 'Stock',
+    reports: 'Rapports',
+    settings: 'Paramètres',
+    totalIncome: 'Revenu Total',
+    totalExpenses: 'Dépenses Totales',
+    netProfit: 'Bénéfice Net',
+    inventoryValue: 'Valeur du Stock',
+    recentActivity: 'Activité Récente',
+    date: 'Date',
+    type: 'Type',
+    details: 'Détails',
+    amount: 'Montant',
+    actions: 'Actions',
+    newTransaction: 'Nouvelle Transaction',
+    exportExcel: 'Exporter Excel',
+    filter: 'Filtrer',
+    save: 'Enregistrer',
+    cancel: 'Annuler',
+    delete: 'Supprimer',
+    edit: 'Modifier',
+    sale: 'Vente',
+    purchase: 'Achat',
+    expense: 'Dépense',
+    client: 'Client',
+    supplier: 'Fournisseur/Bénéficiaire',
+    item: 'Article',
+    quantity: 'Quantité',
+    unitPrice: 'Prix Unitaire',
+    delivery: 'Livraison',
+    packaging: 'Emballage',
+    notes: 'Notes',
+    addItem: 'Ajouter Article',
+    itemName: 'Nom de l\'article',
+    buyPrice: 'Prix d\'achat',
+    sellPrice: 'Prix de vente',
+    lowStock: 'Stock Faible',
+    financialReport: 'Rapport Financier',
+    shareSummary: 'Partager Résumé',
+    printReport: 'Imprimer',
+    deliveryConfig: 'Configuration Livraison',
+    packagingConfig: 'Configuration Emballage',
+    addCompany: 'Ajouter Société',
+    addOption: 'Ajouter Option',
+    name: 'Nom',
+    cost: 'Coût',
+    city: 'Ville',
+    rates: 'Tarifs',
+    noActivity: 'Aucune activité récente',
+    noTransactions: 'Aucune transaction trouvée.',
+    noInventory: 'Aucun article en stock.',
+    deleteConfirm: 'Êtes-vous sûr ?',
+    stockInsufficient: 'Stock insuffisant !',
+    lowStockAlert: 'Alerte Stock Faible',
+    users: 'Utilisateurs',
+    addUser: 'Ajouter Utilisateur',
+    pin: 'Code PIN',
+    role: 'Rôle',
+    admin: 'Administrateur',
+    staff: 'Staff',
+    login: 'Connexion',
+    logout: 'Déconnexion',
+    welcome: 'Bienvenue',
+    accessDenied: 'Accès Refusé',
+    incorrectPin: 'Code PIN incorrect',
+    income: 'Revenus',
+    expenses: 'Dépenses',
+    incomeVsExpenses: 'Revenus vs Dépenses',
+    profit: 'Bénéfice'
+  },
+  ar: {
+    dashboard: 'لوحة القيادة',
+    transactions: 'المعاملات',
+    inventory: 'المخزون',
+    reports: 'التقارير',
+    settings: 'الإعدادات',
+    totalIncome: 'إجمالي الدخل',
+    totalExpenses: 'إجمالي المصاريف',
+    netProfit: 'صافي الربح',
+    inventoryValue: 'قيمة المخزون',
+    recentActivity: 'النشاط الأخير',
+    date: 'التاريخ',
+    type: 'النوع',
+    details: 'التفاصيل',
+    amount: 'المبلغ',
+    actions: 'إجراءات',
+    newTransaction: 'معاملة جديدة',
+    exportExcel: 'تصدير إكسل',
+    filter: 'تصفية',
+    save: 'حفظ',
+    cancel: 'إلغاء',
+    delete: 'حذف',
+    edit: 'تعديل',
+    sale: 'بيع',
+    purchase: 'شراء',
+    expense: 'مصروف',
+    client: 'العميل',
+    supplier: 'المورد/المستفيد',
+    item: 'العنصر',
+    quantity: 'الكمية',
+    unitPrice: 'سعر الوحدة',
+    delivery: 'التوصيل',
+    packaging: 'التغليف',
+    notes: 'ملاحظات',
+    addItem: 'إضافة عنصر',
+    itemName: 'اسم العنصر',
+    buyPrice: 'سعر الشراء',
+    sellPrice: 'سعر البيع',
+    lowStock: 'مخزون منخفض',
+    financialReport: 'التقرير المالي',
+    shareSummary: 'مشاركة الملخص',
+    printReport: 'طباعة التقرير',
+    deliveryConfig: 'إعدادات التوصيل',
+    packagingConfig: 'إعدادات التغليف',
+    addCompany: 'إضافة شركة',
+    addOption: 'إضافة خيار',
+    name: 'الاسم',
+    cost: 'التكلفة',
+    city: 'المدينة',
+    rates: 'الأسعار',
+    noActivity: 'لا يوجد نشاط حديث',
+    noTransactions: 'لم يتم العثور على معاملات.',
+    noInventory: 'لا توجد عناصر في المخزون.',
+    deleteConfirm: 'هل أنت متأكد؟',
+    stockInsufficient: 'المخزون غير كاف!',
+    lowStockAlert: 'تنبيه مخزون منخفض',
+    users: 'المستخدمين',
+    addUser: 'إضافة مستخدم',
+    pin: 'الرمز السري',
+    role: 'الدور',
+    admin: 'مدير',
+    staff: 'موظف',
+    login: 'تسجيل الدخول',
+    logout: 'تسجيل الخروج',
+    welcome: 'مرحبا',
+    accessDenied: 'تم رفض الوصول',
+    incorrectPin: 'الرمز السري غير صحيح',
+    income: 'الدخل',
+    expenses: 'المصاريف',
+    incomeVsExpenses: 'الدخل مقابل المصاريف',
+    profit: 'الربح'
+  }
+};
+
+const LoginScreen = ({ users, onLogin, t }) => {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const user = users.find(u => u.pin === pin);
+    if (user) {
+      onLogin(user);
+    } else {
+      setError(t('incorrectPin'));
+      setPin('');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-blue-600 mb-2">Mabox.ma Management</h1>
+          <p className="text-gray-500">{t('login')}</p>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('pin')}</label>
+            <input
+              type="password"
+              className="w-full text-center text-2xl tracking-widest border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none"
+              value={pin}
+              onChange={(e) => { setPin(e.target.value); setError(''); }}
+              maxLength={4}
+              autoFocus
+            />
+          </div>
+
+          {error && <p className="text-red-500 text-center text-sm">{error}</p>}
+
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+          >
+            {t('login')}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const UserManagement = ({ users, setUsers, t }) => {
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({ name: '', pin: '', role: 'staff' });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setUsers([...users, { id: generateId(), ...formData }]);
+    setShowForm(false);
+    setFormData({ name: '', pin: '', role: 'staff' });
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm(t('deleteConfirm'))) {
+      if (users.length <= 1) {
+        alert('Cannot delete the last user!');
+        return;
+      }
+      setUsers(users.filter(u => u.id !== id));
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-bold text-gray-800">{t('users')}</h3>
+        <button
+          onClick={() => setShowForm(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
+        >
+          <Plus size={20} />
+          <span>{t('addUser')}</span>
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+            <h4 className="text-lg font-bold mb-4">{t('addUser')}</h4>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('name')}</label>
+                <input
+                  type="text"
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('pin')}</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={4}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={formData.pin}
+                  onChange={e => setFormData({ ...formData, pin: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('role')}</label>
+                <select
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={formData.role}
+                  onChange={e => setFormData({ ...formData, role: e.target.value })}
+                >
+                  <option value="staff">{t('staff')}</option>
+                  <option value="admin">{t('admin')}</option>
+                </select>
+              </div>
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  {t('save')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('name')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('role')}</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {users.map(user => (
+              <tr key={user.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.name}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                    {t(user.role)}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button onClick={() => handleDelete(user.id)} className="text-red-600 hover:text-red-900">
+                    <Trash2 size={18} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // --- Main Component ---
 function App() {
   // --- State Management ---
   const [view, setView] = useState('dashboard'); // dashboard, transactions, inventory, reports
+  const [language, setLanguage] = useState('en'); // en, fr, ar
+  const [currentUser, setCurrentUser] = useState(null);
+  const [users, setUsers] = useState(() => {
+    const saved = localStorage.getItem('users');
+    return saved ? JSON.parse(saved) : [{ id: '1', name: 'Admin', pin: '1234', role: 'admin' }];
+  });
   const [transactions, setTransactions] = useState(() => {
     const saved = localStorage.getItem('transactions');
     return saved ? JSON.parse(saved) : [];
@@ -63,6 +468,10 @@ function App() {
     localStorage.setItem('packagingConfig', JSON.stringify(packagingConfig));
   }, [packagingConfig]);
 
+  useEffect(() => {
+    localStorage.setItem('users', JSON.stringify(users));
+  }, [users]);
+
   // --- Derived State (Metrics) ---
   const totalIncome = transactions
     .filter(t => t.type === 'sale')
@@ -86,6 +495,10 @@ function App() {
     return acc + (parseFloat(item.buyPrice || 0) * parseFloat(item.quantity || 0));
   }, 0);
 
+  // --- Helper Functions ---
+  const t = (key) => translations[language][key] || key;
+  const isRTL = language === 'ar';
+
   // --- Navigation ---
   const NavItem = ({ id, icon: Icon, label }) => (
     <button
@@ -100,34 +513,65 @@ function App() {
     </button>
   );
 
+  if (!currentUser) {
+    return <LoginScreen users={users} onLogin={setCurrentUser} t={t} />;
+  }
+
   return (
-    <div className="flex h-screen bg-gray-50 font-sans text-gray-900">
+    <div className={`flex h-screen bg-gray-50 font-sans text-gray-900 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`} dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-6 border-b border-gray-100">
-          <h1 className="text-2xl font-bold text-blue-600">BizManager</h1>
-          <p className="text-xs text-gray-500 mt-1">Accounting & Inventory</p>
+      <aside className={`w-64 bg-white border-r border-gray-200 flex flex-col ${isRTL ? 'border-l border-r-0' : ''}`}>
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+          <div>
+            <h1 className="text-xl font-bold text-blue-600">Mabox.ma</h1>
+            <p className="text-xs text-gray-500 mt-1">{t('welcome')}, {currentUser.name}</p>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4">
+          <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+            {['en', 'fr', 'ar'].map(lang => (
+              <button
+                key={lang}
+                onClick={() => setLanguage(lang)}
+                className={`flex-1 text-xs py-1 rounded-md uppercase font-bold ${language === lang ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}
+              >
+                {lang}
+              </button>
+            ))}
+          </div>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          <NavItem id="dashboard" icon={LayoutDashboard} label="Dashboard" />
-          <NavItem id="transactions" icon={ArrowRightLeft} label="Transactions" />
-          <NavItem id="inventory" icon={Package} label="Inventory" />
-          <NavItem id="reports" icon={FileText} label="Reports" />
-          <NavItem id="settings" icon={Settings} label="Settings" />
+          <NavItem id="dashboard" icon={LayoutDashboard} label={t('dashboard')} />
+          <NavItem id="transactions" icon={ArrowRightLeft} label={t('transactions')} />
+          <NavItem id="inventory" icon={Package} label={t('inventory')} />
+          {currentUser.role === 'admin' && (
+            <>
+              <NavItem id="reports" icon={FileText} label={t('reports')} />
+              <NavItem id="settings" icon={Settings} label={t('settings')} />
+              <NavItem id="users" icon={Users} label={t('users')} />
+            </>
+          )}
         </nav>
 
-        <div className="p-4 border-t border-gray-100 text-xs text-gray-400 text-center">
-          v1.0.0 • Local Storage
+        <div className="p-4 border-t border-gray-100">
+          <button
+            onClick={() => setCurrentUser(null)}
+            className="flex items-center space-x-3 w-full p-3 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <LogOut size={20} />
+            <span className="font-medium">{t('logout')}</span>
+          </button>
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-8">
         <header className="flex justify-between items-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-800 capitalize">{view}</h2>
+          <h2 className="text-3xl font-bold text-gray-800 capitalize">{t(view)}</h2>
           <div className="text-sm text-gray-500">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString(language === 'ar' ? 'ar-MA' : language === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </div>
         </header>
 
@@ -139,6 +583,7 @@ function App() {
             netProfit={netProfit}
             inventoryValue={inventoryValue}
             transactions={transactions}
+            t={t}
           />
         )}
 
@@ -150,6 +595,7 @@ function App() {
             setInventory={setInventory}
             deliveryConfig={deliveryConfig}
             packagingConfig={packagingConfig}
+            t={t}
           />
         )}
 
@@ -157,25 +603,45 @@ function App() {
           <InventoryManager
             inventory={inventory}
             setInventory={setInventory}
+            t={t}
           />
         )}
 
-        {view === 'reports' && (
+        {view === 'reports' && currentUser.role === 'admin' && (
           <ReportView
             transactions={transactions}
             totalIncome={totalIncome}
             totalExpenses={totalExpenses}
             netProfit={netProfit}
+            t={t}
           />
         )}
 
-        {view === 'settings' && (
+        {view === 'settings' && currentUser.role === 'admin' && (
           <SettingsView
             deliveryConfig={deliveryConfig}
             setDeliveryConfig={setDeliveryConfig}
             packagingConfig={packagingConfig}
             setPackagingConfig={setPackagingConfig}
+            t={t}
           />
+        )}
+
+        {view === 'users' && currentUser.role === 'admin' && (
+          <UserManagement
+            users={users}
+            setUsers={setUsers}
+            t={t}
+          />
+        )}
+
+        {/* Access Denied Fallback */}
+        {['reports', 'settings', 'users'].includes(view) && currentUser.role !== 'admin' && (
+          <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+            <ShieldAlert size={48} className="mb-4 text-red-500" />
+            <h3 className="text-xl font-bold">{t('accessDenied')}</h3>
+            <p>{t('adminOnly')}</p>
+          </div>
         )}
       </main>
     </div>
@@ -184,45 +650,45 @@ function App() {
 
 // --- Placeholder Sub-Components ---
 
-const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, transactions }) => {
+const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, transactions, t }) => {
   const recentTransactions = transactions.slice(0, 5);
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard title="Total Income" value={totalIncome} icon={TrendingUp} color="green" />
-        <MetricCard title="Total Expenses" value={totalExpenses} icon={TrendingDown} color="red" />
-        <MetricCard title="Net Profit" value={netProfit} icon={ArrowRightLeft} color={netProfit >= 0 ? 'blue' : 'red'} />
-        <MetricCard title="Inventory Value" value={inventoryValue} icon={Package} color="purple" />
+        <MetricCard title={t('totalIncome')} value={totalIncome} icon={TrendingUp} color="green" />
+        <MetricCard title={t('totalExpenses')} value={totalExpenses} icon={TrendingDown} color="red" />
+        <MetricCard title={t('netProfit')} value={netProfit} icon={ArrowRightLeft} color={netProfit >= 0 ? 'blue' : 'red'} />
+        <MetricCard title={t('inventoryValue')} value={inventoryValue} icon={Package} color="purple" />
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+        <h3 className="text-lg font-semibold mb-4">{t('recentActivity')}</h3>
         <div className="overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('date')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('type')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('details')}</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('amount')}</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {recentTransactions.map(t => (
-                <tr key={t.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.date}</td>
-                  <td className="px-6 py-4 whitespace-nowrap capitalize text-sm text-gray-900">{t.type}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.party || t.category || '-'}</td>
-                  <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-medium ${t.type === 'sale' ? 'text-green-600' : 'text-red-600'
+              {recentTransactions.map(tItem => (
+                <tr key={tItem.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
+                  <td className="px-6 py-4 whitespace-nowrap capitalize text-sm text-gray-900">{t(tItem.type)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.party || tItem.category || '-'}</td>
+                  <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
                     }`}>
-                    {t.type === 'sale' ? '+' : '-'}{formatCurrency(t.amount)}
+                    {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount)}
                   </td>
                 </tr>
               ))}
               {recentTransactions.length === 0 && (
                 <tr>
-                  <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">No recent activity</td>
+                  <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">{t('noActivity')}</td>
                 </tr>
               )}
             </tbody>
@@ -254,7 +720,7 @@ const MetricCard = ({ title, value, icon: Icon, color }) => {
   );
 };
 
-const TransactionManager = ({ transactions, setTransactions, inventory, setInventory, deliveryConfig, packagingConfig }) => {
+const TransactionManager = ({ transactions, setTransactions, inventory, setInventory, deliveryConfig, packagingConfig, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
   const [formData, setFormData] = useState({
@@ -351,12 +817,25 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
         setInventory(updatedInventory);
       }
     } else if (formData.type === 'purchase' && formData.itemId) {
-      const updatedInventory = inventory.map(i =>
-        i.id === formData.itemId
-          ? { ...i, quantity: parseInt(i.quantity) + parseInt(formData.quantity) }
-          : i
-      );
-      setInventory(updatedInventory);
+      const item = inventory.find(i => i.id === formData.itemId);
+      if (item) {
+        // Weighted Average Cost (WAC) Logic
+        const currentQty = parseInt(item.quantity);
+        const newQty = parseInt(formData.quantity);
+        const currentBuyPrice = parseFloat(item.buyPrice);
+        const purchasePrice = parseFloat(formData.amount); // Unit price from form
+
+        const totalValue = (currentQty * currentBuyPrice) + (newQty * purchasePrice);
+        const totalQty = currentQty + newQty;
+        const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
+
+        const updatedInventory = inventory.map(i =>
+          i.id === formData.itemId
+            ? { ...i, quantity: totalQty, buyPrice: newBuyPrice }
+            : i
+        );
+        setInventory(updatedInventory);
+      }
     }
 
     setTransactions([newTransaction, ...transactions]);
@@ -378,7 +857,30 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   };
 
   const handleDelete = (id) => {
-    if (window.confirm('Delete this transaction? Stock will NOT be reverted automatically.')) {
+    if (window.confirm(t('deleteConfirm'))) {
+      const transaction = transactions.find(t => t.id === id);
+
+      // Revert Inventory Logic
+      if (transaction && transaction.itemId) {
+        const item = inventory.find(i => i.id === transaction.itemId);
+        if (item) {
+          let newQuantity = parseInt(item.quantity);
+
+          if (transaction.type === 'sale') {
+            // If it was a sale, add back the quantity
+            newQuantity += parseInt(transaction.quantity);
+          } else if (transaction.type === 'purchase') {
+            // If it was a purchase, remove the quantity
+            newQuantity -= parseInt(transaction.quantity);
+          }
+
+          const updatedInventory = inventory.map(i =>
+            i.id === transaction.itemId ? { ...i, quantity: newQuantity } : i
+          );
+          setInventory(updatedInventory);
+        }
+      }
+
       setTransactions(transactions.filter(t => t.id !== id));
     }
   };
@@ -386,10 +888,10 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <h3 className="text-xl font-bold text-gray-800">Transactions</h3>
+        <h3 className="text-xl font-bold text-gray-800">{t('transactions')}</h3>
 
         <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-gray-200">
-          <span className="text-sm text-gray-500">Filter:</span>
+          <span className="text-sm text-gray-500">{t('filter')}:</span>
           <input
             type="date"
             className="border rounded px-2 py-1 text-sm"
@@ -411,14 +913,14 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
             className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700"
           >
             <Download size={20} />
-            <span>Export Excel</span>
+            <span>{t('exportExcel')}</span>
           </button>
           <button
             onClick={() => setShowForm(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
           >
             <Plus size={20} />
-            <span>New Transaction</span>
+            <span>{t('newTransaction')}</span>
           </button>
         </div>
       </div>
@@ -426,11 +928,11 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <h4 className="text-lg font-bold mb-4">New Transaction</h4>
+            <h4 className="text-lg font-bold mb-4">{t('newTransaction')}</h4>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Date</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('date')}</label>
                   <input
                     type="date"
                     required
@@ -440,29 +942,29 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Type</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('type')}</label>
                   <select
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
                     value={formData.type}
                     onChange={e => handleTypeChange(e.target.value)}
                   >
-                    <option value="sale">Sale (Vente)</option>
-                    <option value="purchase">Purchase (Achat)</option>
-                    <option value="expense">Expense (Charge)</option>
+                    <option value="sale">{t('sale')}</option>
+                    <option value="purchase">{t('purchase')}</option>
+                    <option value="expense">{t('expense')}</option>
                   </select>
                 </div>
               </div>
 
               {formData.type !== 'expense' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Item (Stock)</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('item')}</label>
                   <select
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
                     value={formData.itemId}
                     onChange={e => handleItemChange(e.target.value)}
                     required={formData.type !== 'expense'}
                   >
-                    <option value="">Select Item</option>
+                    <option value="">{t('item')}</option>
                     {inventory.map(item => (
                       <option key={item.id} value={item.id}>
                         {item.name} (Stock: {item.quantity})
@@ -474,7 +976,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  {formData.type === 'sale' ? 'Client' : 'Supplier/Payee'}
+                  {formData.type === 'sale' ? t('client') : t('supplier')}
                 </label>
                 <input
                   type="text"
@@ -491,7 +993,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               {formData.type !== 'expense' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Quantity</label>
+                    <label className="block text-sm font-medium text-gray-700">{t('quantity')}</label>
                     <input
                       type="number"
                       required
@@ -502,7 +1004,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Unit Price</label>
+                    <label className="block text-sm font-medium text-gray-700">{t('unitPrice')}</label>
                     <input
                       type="number"
                       required
@@ -518,7 +1020,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
                   {/* Delivery Selection */}
                   <div className="col-span-2 md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700">Delivery</label>
+                    <label className="block text-sm font-medium text-gray-700">{t('delivery')}</label>
                     <select
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 mb-2"
                       value={selectedCompany}
@@ -527,7 +1029,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                         setFormData({ ...formData, deliveryCost: '' }); // Reset cost when company changes
                       }}
                     >
-                      <option value="">Select Company</option>
+                      <option value="">{t('addCompany')}</option>
                       {deliveryConfig.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
 
@@ -537,7 +1039,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                         value={formData.deliveryCost} // We store the cost directly for simplicity, or could store rate ID
                         onChange={(e) => setFormData({ ...formData, deliveryCost: e.target.value })}
                       >
-                        <option value="">Select City/Rate</option>
+                        <option value="">{t('city')}</option>
                         {deliveryConfig.find(c => c.id === selectedCompany)?.rates.map(r => (
                           <option key={r.id} value={r.cost}>{r.city} ({formatCurrency(r.cost)})</option>
                         ))}
@@ -556,7 +1058,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
                   {/* Packaging Selection */}
                   <div className="col-span-2 md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700">Packaging</label>
+                    <label className="block text-sm font-medium text-gray-700">{t('packaging')}</label>
                     <select
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 mb-2"
                       value={selectedPackaging}
@@ -570,7 +1072,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                         }
                       }}
                     >
-                      <option value="">Select Packaging</option>
+                      <option value="">{t('addOption')}</option>
                       {packagingConfig.map(p => <option key={p.id} value={p.id}>{p.name} ({formatCurrency(p.cost)})</option>)}
                     </select>
                     <input
@@ -587,7 +1089,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               {formData.type === 'expense' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Amount</label>
+                    <label className="block text-sm font-medium text-gray-700">{t('amount')}</label>
                     <input
                       type="number"
                       required
@@ -597,7 +1099,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Category</label>
+                    <label className="block text-sm font-medium text-gray-700">{t('type')}</label>
                     <input
                       type="text"
                       list="categories"
@@ -613,7 +1115,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Notes</label>
+                <label className="block text-sm font-medium text-gray-700">{t('notes')}</label>
                 <textarea
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
                   value={formData.notes}
@@ -627,13 +1129,13 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                   onClick={() => setShowForm(false)}
                   className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  Save Transaction
+                  {t('save')}
                 </button>
               </div>
             </form>
@@ -645,38 +1147,38 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Party</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('date')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('type')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('client')}/{t('supplier')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('details')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('amount')}</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredTransactions.map(t => (
-              <tr key={t.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.date}</td>
+            {filteredTransactions.map(tItem => (
+              <tr key={tItem.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                    ${t.type === 'sale' ? 'bg-green-100 text-green-800' :
-                      t.type === 'purchase' ? 'bg-blue-100 text-blue-800' :
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                    ${tItem.type === 'sale' ? 'bg-green-100 text-green-800' :
+                      tItem.type === 'purchase' ? 'bg-blue-100 text-blue-800' :
                         'bg-red-100 text-red-800'
                     }`}>
-                    {t.type.toUpperCase()}
+                    {t(tItem.type)}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t.party || '-'}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {t.itemId ? (inventory.find(i => i.id === t.itemId)?.name || 'Unknown Item') : t.category}
-                  {t.quantity && ` x${t.quantity}`}
+                  {tItem.itemId ? (inventory.find(i => i.id === tItem.itemId)?.name || 'Unknown Item') : tItem.category}
+                  {tItem.quantity && ` x${tItem.quantity}`}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${t.type === 'sale' ? 'text-green-600' : 'text-red-600'
+                <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
                   }`}>
-                  {t.type === 'sale' ? '+' : '-'}{formatCurrency(t.amount || 0)}
+                  {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount || 0)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => handleDelete(t.id)} className="text-red-600 hover:text-red-900">
+                  <button onClick={() => handleDelete(tItem.id)} className="text-red-600 hover:text-red-900">
                     <Trash2 size={18} />
                   </button>
                 </td>
@@ -685,7 +1187,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
             {filteredTransactions.length === 0 && (
               <tr>
                 <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
-                  No transactions found.
+                  {t('noTransactions')}
                 </td>
               </tr>
             )}
@@ -696,7 +1198,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   );
 };
 
-const InventoryManager = ({ inventory, setInventory }) => {
+const InventoryManager = ({ inventory, setInventory, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({
@@ -742,7 +1244,7 @@ const InventoryManager = ({ inventory, setInventory }) => {
   };
 
   const handleDelete = (id) => {
-    if (window.confirm('Are you sure you want to delete this item?')) {
+    if (window.confirm(t('deleteConfirm'))) {
       setInventory(inventory.filter(item => item.id !== id));
     }
   };
@@ -750,14 +1252,14 @@ const InventoryManager = ({ inventory, setInventory }) => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="text-xl font-bold text-gray-800">Inventory Items</h3>
+        <h3 className="text-xl font-bold text-gray-800">{t('inventory')}</h3>
         <div className="flex space-x-2">
           <button
             onClick={handleExport}
             className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700"
           >
             <Download size={20} />
-            <span>Export Excel</span>
+            <span>{t('exportExcel')}</span>
           </button>
           <button
             onClick={() => {
@@ -768,7 +1270,7 @@ const InventoryManager = ({ inventory, setInventory }) => {
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
           >
             <Plus size={20} />
-            <span>Add Item</span>
+            <span>{t('addItem')}</span>
           </button>
         </div>
       </div>
@@ -776,10 +1278,10 @@ const InventoryManager = ({ inventory, setInventory }) => {
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
-            <h4 className="text-lg font-bold mb-4">{editingItem ? 'Edit Item' : 'Add New Item'}</h4>
+            <h4 className="text-lg font-bold mb-4">{editingItem ? t('edit') : t('addItem')}</h4>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Item Name</label>
+                <label className="block text-sm font-medium text-gray-700">{t('itemName')}</label>
                 <input
                   type="text"
                   required
@@ -790,7 +1292,7 @@ const InventoryManager = ({ inventory, setInventory }) => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Buy Price</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('buyPrice')}</label>
                   <input
                     type="number"
                     required
@@ -800,7 +1302,7 @@ const InventoryManager = ({ inventory, setInventory }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Sell Price</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('sellPrice')}</label>
                   <input
                     type="number"
                     required
@@ -812,7 +1314,7 @@ const InventoryManager = ({ inventory, setInventory }) => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Quantity</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('quantity')}</label>
                   <input
                     type="number"
                     required
@@ -822,7 +1324,7 @@ const InventoryManager = ({ inventory, setInventory }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Low Stock Alert</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('lowStockAlert')}</label>
                   <input
                     type="number"
                     required
@@ -838,13 +1340,13 @@ const InventoryManager = ({ inventory, setInventory }) => {
                   onClick={() => setShowForm(false)}
                   className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  Save Item
+                  {t('save')}
                 </button>
               </div>
             </form>
@@ -856,12 +1358,12 @@ const InventoryManager = ({ inventory, setInventory }) => {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Price</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sell Price</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('item')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('quantity')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('buyPrice')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('sellPrice')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('inventoryValue')}</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -871,7 +1373,7 @@ const InventoryManager = ({ inventory, setInventory }) => {
                   <div className="text-sm font-medium text-gray-900">{item.name}</div>
                   {parseInt(item.quantity) <= parseInt(item.lowStockThreshold) && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                      Low Stock
+                      {t('lowStock')}
                     </span>
                   )}
                 </td>
@@ -900,7 +1402,7 @@ const InventoryManager = ({ inventory, setInventory }) => {
             {inventory.length === 0 && (
               <tr>
                 <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
-                  No items in inventory. Add one to get started.
+                  {t('noInventory')}
                 </td>
               </tr>
             )}
@@ -911,90 +1413,135 @@ const InventoryManager = ({ inventory, setInventory }) => {
   );
 };
 
-const ReportView = ({ transactions, totalIncome, totalExpenses, netProfit }) => {
-  const handlePrint = () => {
-    window.print();
-  };
+const ReportView = ({ transactions, totalIncome, totalExpenses, netProfit, t }) => {
+  const reportRef = useRef();
 
-  const handleShare = () => {
-    const text = `Business Report\n\nTotal Income: ${formatCurrency(totalIncome)}\nTotal Expenses: ${formatCurrency(totalExpenses)}\nNet Profit: ${formatCurrency(netProfit)}\n\nGenerated by BizManager`;
-    navigator.clipboard.writeText(text).then(() => alert('Report summary copied to clipboard!'));
+  const handlePrint = useReactToPrint({
+    content: () => reportRef.current,
+  });
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Financial Report',
+          text: `Net Profit: ${formatCurrency(netProfit)}\nTotal Income: ${formatCurrency(totalIncome)}\nTotal Expenses: ${formatCurrency(totalExpenses)}`,
+          url: window.location.href,
+        });
+      } catch (error) {
+        console.log('Error sharing', error);
+      }
+    } else {
+      alert('Web Share API not supported');
+    }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center print:hidden">
-        <h3 className="text-xl font-bold text-gray-800">Financial Report</h3>
-        <div className="space-x-3">
-          <button
-            onClick={handleShare}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700 inline-flex"
-          >
+        <h3 className="text-xl font-bold text-gray-800">{t('financialReport')}</h3>
+        <div className="flex space-x-2">
+          <button onClick={handleShare} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700">
             <Share2 size={20} />
-            <span>Share Summary</span>
+            <span>{t('shareSummary')}</span>
           </button>
-          <button
-            onClick={handlePrint}
-            className="bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-gray-900 inline-flex"
-          >
+          <button onClick={handlePrint} className="bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-gray-900">
             <Printer size={20} />
-            <span>Print Report</span>
+            <span>{t('printReport')}</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 print:shadow-none print:border-none">
+      <div ref={reportRef} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 print:shadow-none print:border-none">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Business Financial Report</h1>
-          <p className="text-gray-500 mt-2">Generated on {new Date().toLocaleDateString()}</p>
+          <h1 className="text-3xl font-bold text-blue-600">Mabox.ma Management</h1>
+          <p className="text-gray-500">{t('financialReport')}</p>
+          <p className="text-sm text-gray-400 mt-1">{new Date().toLocaleDateString()}</p>
         </div>
 
-        <div className="grid grid-cols-3 gap-8 mb-8">
-          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 text-center print:border-gray-300">
-            <p className="text-sm text-gray-500 uppercase tracking-wide">Total Income</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(totalIncome)}</p>
+        <div className="grid grid-cols-3 gap-6 mb-8">
+          <div className="p-4 bg-green-50 rounded-lg border border-green-100 text-center">
+            <p className="text-sm text-green-600 font-medium">{t('totalIncome')}</p>
+            <p className="text-2xl font-bold text-green-700">{formatCurrency(totalIncome)}</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 text-center print:border-gray-300">
-            <p className="text-sm text-gray-500 uppercase tracking-wide">Total Expenses</p>
-            <p className="text-2xl font-bold text-red-600">{formatCurrency(totalExpenses)}</p>
+          <div className="p-4 bg-red-50 rounded-lg border border-red-100 text-center">
+            <p className="text-sm text-red-600 font-medium">{t('totalExpenses')}</p>
+            <p className="text-2xl font-bold text-red-700">{formatCurrency(totalExpenses)}</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 text-center print:border-gray-300">
-            <p className="text-sm text-gray-500 uppercase tracking-wide">Net Profit</p>
+          <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 text-center">
+            <p className="text-sm text-blue-600 font-medium">{t('netProfit')}</p>
             <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
               {formatCurrency(netProfit)}
             </p>
           </div>
         </div>
 
-        <div className="overflow-hidden">
-          <h4 className="text-lg font-bold mb-4 border-b pb-2">Transaction History</h4>
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 print:break-inside-avoid">
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 h-80">
+            <h4 className="text-sm font-bold text-gray-700 mb-4 text-center">{t('incomeVsExpenses')}</h4>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={[
+                  { name: t('income'), amount: totalIncome, fill: '#16a34a' },
+                  { name: t('expenses'), amount: totalExpenses, fill: '#dc2626' },
+                ]}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip formatter={(value) => formatCurrency(value)} />
+                <Bar dataKey="amount" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 h-80">
+            <h4 className="text-sm font-bold text-gray-700 mb-4 text-center">{t('profit')}</h4>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={[
+                  { name: t('netProfit'), amount: netProfit, fill: netProfit >= 0 ? '#2563eb' : '#dc2626' },
+                ]}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip formatter={(value) => formatCurrency(value)} />
+                <Bar dataKey="amount" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div>
+          <h4 className="text-lg font-bold mb-4">{t('recentActivity')}</h4>
+          <table className="min-w-full divide-y divide-gray-200">
             <thead>
               <tr>
-                <th className="px-4 py-2 text-left font-medium text-gray-500">Date</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-500">Type</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-500">Party/Category</th>
-                <th className="px-4 py-2 text-right font-medium text-gray-500">Amount</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('date')}</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('details')}</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">{t('amount')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {transactions.map(t => (
-                <tr key={t.id}>
-                  <td className="px-4 py-2 text-gray-900">{t.date}</td>
-                  <td className="px-4 py-2 capitalize">{t.type}</td>
-                  <td className="px-4 py-2 text-gray-900">{t.party || t.category}</td>
-                  <td className={`px-4 py-2 text-right font-medium ${t.type === 'sale' ? 'text-green-600' : 'text-red-600'
+              {transactions.slice(0, 10).map(tItem => (
+                <tr key={tItem.id}>
+                  <td className="px-4 py-2 text-sm text-gray-500">{tItem.date}</td>
+                  <td className="px-4 py-2 text-sm text-gray-900">
+                    {t(tItem.type)} - {tItem.party || tItem.category}
+                  </td>
+                  <td className={`px-4 py-2 text-right font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
                     }`}>
-                    {t.type === 'sale' ? '+' : '-'}{formatCurrency(t.amount)}
+                    {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount)}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-
         <div className="mt-12 pt-8 border-t border-gray-200 text-center text-sm text-gray-400 print:block hidden">
-          <p>End of Report • BizManager</p>
+          <p>End of Report • Mabox.ma Management</p>
         </div>
       </div>
     </div>
@@ -1002,31 +1549,37 @@ const ReportView = ({ transactions, totalIncome, totalExpenses, netProfit }) => 
 };
 
 
-const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setPackagingConfig }) => {
+const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setPackagingConfig, t }) => {
   const [newCompany, setNewCompany] = useState('');
+  const [newRate, setNewRate] = useState({ city: '', cost: '' });
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
   const [newPackaging, setNewPackaging] = useState({ name: '', cost: '' });
 
   // Helper to add a company
   const addCompany = () => {
-    if (!newCompany.trim()) return;
+    if (!newCompany) return;
     setDeliveryConfig([...deliveryConfig, { id: generateId(), name: newCompany, rates: [] }]);
     setNewCompany('');
   };
 
   // Helper to delete a company
   const deleteCompany = (id) => {
-    setDeliveryConfig(deliveryConfig.filter(c => c.id !== id));
+    if (window.confirm(t('deleteConfirm'))) {
+      setDeliveryConfig(deliveryConfig.filter(c => c.id !== id));
+      if (selectedCompanyId === id) setSelectedCompanyId(null);
+    }
   };
 
   // Helper to add a rate to a company
-  const addRate = (companyId, city, cost) => {
-    const updated = deliveryConfig.map(c => {
-      if (c.id === companyId) {
-        return { ...c, rates: [...c.rates, { id: generateId(), city, cost }] };
+  const addRate = () => {
+    if (!selectedCompanyId || !newRate.city || !newRate.cost) return;
+    setDeliveryConfig(deliveryConfig.map(c => {
+      if (c.id === selectedCompanyId) {
+        return { ...c, rates: [...c.rates, { id: generateId(), ...newRate }] };
       }
       return c;
-    });
-    setDeliveryConfig(updated);
+    }));
+    setNewRate({ city: '', cost: '' });
   };
 
   // Helper to delete a rate
@@ -1042,150 +1595,135 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
 
   // Helper to add packaging
   const addPackaging = () => {
-    if (!newPackaging.name.trim() || !newPackaging.cost) return;
+    if (!newPackaging.name || !newPackaging.cost) return;
     setPackagingConfig([...packagingConfig, { id: generateId(), ...newPackaging }]);
     setNewPackaging({ name: '', cost: '' });
   };
 
   // Helper to delete packaging
   const deletePackaging = (id) => {
-    setPackagingConfig(packagingConfig.filter(p => p.id !== id));
+    if (window.confirm(t('deleteConfirm'))) {
+      setPackagingConfig(packagingConfig.filter(p => p.id !== id));
+    }
   };
 
   return (
     <div className="space-y-8">
       {/* Delivery Configuration */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Delivery Configuration</h3>
+        <h3 className="text-xl font-bold text-gray-800 mb-4">{t('deliveryConfig')}</h3>
 
-        {/* Add Company */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-4 mb-6">
           <input
             type="text"
-            placeholder="New Delivery Company Name (e.g., Tawsil)"
+            placeholder={t('addCompany')}
             className="flex-1 border rounded-lg px-4 py-2"
             value={newCompany}
             onChange={(e) => setNewCompany(e.target.value)}
           />
-          <button
-            onClick={addCompany}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            Add Company
+          <button onClick={addCompany} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+            <Plus size={20} />
           </button>
         </div>
 
-        {/* Companies List */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {deliveryConfig.map(company => (
-            <div key={company.id} className="border rounded-lg p-4 bg-gray-50">
-              <div className="flex justify-between items-center mb-4 border-b pb-2">
-                <h4 className="font-bold text-lg">{company.name}</h4>
-                <button onClick={() => deleteCompany(company.id)} className="text-red-500 hover:text-red-700">
-                  <Trash2 size={18} />
+          <div className="space-y-2">
+            <h4 className="font-semibold text-gray-700">{t('delivery')}</h4>
+            {deliveryConfig.map(company => (
+              <div
+                key={company.id}
+                className={`p-3 rounded-lg border cursor-pointer flex justify-between items-center ${selectedCompanyId === company.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}
+                onClick={() => setSelectedCompanyId(company.id)}
+              >
+                <span className="font-medium">{company.name}</span>
+                <button onClick={(e) => { e.stopPropagation(); deleteCompany(company.id); }} className="text-red-500 hover:text-red-700">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {selectedCompanyId && (
+            <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-semibold text-gray-700">{t('rates')} - {deliveryConfig.find(c => c.id === selectedCompanyId)?.name}</h4>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder={t('city')}
+                  className="flex-1 border rounded px-2 py-1 text-sm"
+                  value={newRate.city}
+                  onChange={(e) => setNewRate({ ...newRate, city: e.target.value })}
+                />
+                <input
+                  type="number"
+                  placeholder={t('cost')}
+                  className="w-24 border rounded px-2 py-1 text-sm"
+                  value={newRate.cost}
+                  onChange={(e) => setNewRate({ ...newRate, cost: e.target.value })}
+                />
+                <button onClick={addRate} className="bg-green-600 text-white p-1 rounded hover:bg-green-700">
+                  <Plus size={16} />
                 </button>
               </div>
 
-              {/* Rates List */}
-              <div className="space-y-2 mb-4">
-                {company.rates.map(rate => (
-                  <div key={rate.id} className="flex justify-between items-center text-sm bg-white p-2 rounded border">
+              <div className="space-y-2">
+                {deliveryConfig.find(c => c.id === selectedCompanyId)?.rates.map(rate => (
+                  <div key={rate.id} className="flex justify-between items-center bg-white p-2 rounded border border-gray-200 text-sm">
                     <span>{rate.city}</span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <span className="font-medium">{formatCurrency(rate.cost)}</span>
-                      <button onClick={() => deleteRate(company.id, rate.id)} className="text-gray-400 hover:text-red-500">
+                      <button onClick={() => deleteRate(selectedCompanyId, rate.id)} className="text-red-500 hover:text-red-700">
                         <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
                 ))}
-                {company.rates.length === 0 && <p className="text-xs text-gray-400 italic">No rates defined.</p>}
               </div>
-
-              {/* Add Rate Form */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const city = e.target.city.value;
-                  const cost = e.target.cost.value;
-                  if (city && cost) {
-                    addRate(company.id, city, cost);
-                    e.target.reset();
-                  }
-                }}
-                className="flex gap-2"
-              >
-                <input name="city" placeholder="City" className="flex-1 border rounded px-2 py-1 text-sm" required />
-                <input name="cost" type="number" placeholder="Cost" className="w-20 border rounded px-2 py-1 text-sm" required />
-                <button type="submit" className="bg-green-600 text-white px-2 py-1 rounded text-sm hover:bg-green-700">
-                  <Plus size={16} />
-                </button>
-              </form>
             </div>
-          ))}
+          )}
         </div>
       </div>
 
       {/* Packaging Configuration */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Packaging Configuration</h3>
+        <h3 className="text-xl font-bold text-gray-800 mb-4">{t('packagingConfig')}</h3>
 
-        {/* Add Packaging */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-4 mb-6">
           <input
             type="text"
-            placeholder="Packaging Name (e.g., Box S)"
+            placeholder={t('name')}
             className="flex-1 border rounded-lg px-4 py-2"
             value={newPackaging.name}
             onChange={(e) => setNewPackaging({ ...newPackaging, name: e.target.value })}
           />
           <input
             type="number"
-            placeholder="Cost"
+            placeholder={t('cost')}
             className="w-32 border rounded-lg px-4 py-2"
             value={newPackaging.cost}
             onChange={(e) => setNewPackaging({ ...newPackaging, cost: e.target.value })}
           />
-          <button
-            onClick={addPackaging}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            Add Option
+          <button onClick={addPackaging} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+            <Plus size={20} />
           </button>
         </div>
 
-        {/* Packaging List */}
-        <div className="overflow-hidden border rounded-lg">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {packagingConfig.map(p => (
-                <tr key={p.id}>
-                  <td className="px-6 py-4 text-sm text-gray-900">{p.name}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{formatCurrency(p.cost)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => deletePackaging(p.id)} className="text-red-600 hover:text-red-900">
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {packagingConfig.length === 0 && (
-                <tr>
-                  <td colSpan="3" className="px-6 py-4 text-center text-sm text-gray-500">No packaging options defined.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {packagingConfig.map(pkg => (
+            <div key={pkg.id} className="p-4 rounded-lg border border-gray-200 flex justify-between items-center bg-gray-50">
+              <div>
+                <p className="font-medium text-gray-900">{pkg.name}</p>
+                <p className="text-sm text-gray-500">{formatCurrency(pkg.cost)}</p>
+              </div>
+              <button onClick={() => deletePackaging(pkg.id)} className="text-red-500 hover:text-red-700">
+                <Trash2 size={18} />
+              </button>
+            </div>
+          ))}
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 
