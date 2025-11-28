@@ -257,6 +257,7 @@ const LoginScreen = ({ users, onLogin, t }) => {
 
   const handleLogin = (e) => {
     e.preventDefault();
+    console.log('Login Attempt:', { enteredPin: pin, availableUsers: users });
     const user = users.find(u => u.pin === pin);
     if (user) {
       onLogin(user);
