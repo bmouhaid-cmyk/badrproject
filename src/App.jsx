@@ -440,24 +440,35 @@ function App() {
   const [language, setLanguage] = useState('en'); // en, fr, ar
   const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [error, setError] = useState(null);
 
   // --- Initial Load (Supabase) ---
   useEffect(() => {
     const fetchData = async () => {
-      const { data: invData } = await supabase.from('inventory').select('*');
-      if (invData) setInventory(invData);
+      try {
+        const { data: invData, error: invError } = await supabase.from('inventory').select('*');
+        if (invError) throw invError;
+        if (invData) setInventory(invData);
 
-      const { data: txData } = await supabase.from('transactions').select('*').order('date', { ascending: false });
-      if (txData) setTransactions(txData);
+        const { data: txData, error: txError } = await supabase.from('transactions').select('*').order('date', { ascending: false });
+        if (txError) throw txError;
+        if (txData) setTransactions(txData);
 
-      const { data: userData } = await supabase.from('app_users').select('*');
-      if (userData) setUsers(userData);
+        const { data: userData, error: userError } = await supabase.from('app_users').select('*');
+        if (userError) throw userError;
+        if (userData) setUsers(userData);
 
-      const { data: delData } = await supabase.from('delivery_config').select('*');
-      if (delData) setDeliveryConfig(delData);
+        const { data: delData, error: delError } = await supabase.from('delivery_config').select('*');
+        if (delError) throw delError;
+        if (delData) setDeliveryConfig(delData);
 
-      const { data: pkgData } = await supabase.from('packaging_config').select('*');
-      if (pkgData) setPackagingConfig(pkgData);
+        const { data: pkgData, error: pkgError } = await supabase.from('packaging_config').select('*');
+        if (pkgError) throw pkgError;
+        if (pkgData) setPackagingConfig(pkgData);
+      } catch (err) {
+        console.error('Error fetching data:', err);
+        setError('Failed to load data. Please check your connection and configuration.');
+      }
     };
 
     fetchData();
