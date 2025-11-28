@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import * as XLSX from 'xlsx';
+import { supabase } from './supabase';
 import {
   LayoutDashboard,
   ArrowRightLeft,
@@ -304,19 +305,23 @@ const UserManagement = ({ users, setUsers, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', pin: '', role: 'staff' });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setUsers([...users, { id: generateId(), ...formData }]);
-    setShowForm(false);
-    setFormData({ name: '', pin: '', role: 'staff' });
+    const { data, error } = await supabase.from('app_users').insert([{ ...formData }]).select();
+    if (data) {
+      setUsers([...users, data[0]]);
+      setShowForm(false);
+      setFormData({ name: '', pin: '', role: 'staff' });
+    }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
       if (users.length <= 1) {
         alert('Cannot delete the last user!');
         return;
       }
+      await supabase.from('app_users').delete().eq('id', id);
       setUsers(users.filter(u => u.id !== id));
     }
   };
@@ -426,51 +431,55 @@ const UserManagement = ({ users, setUsers, t }) => {
 
 // --- Main Component ---
 function App() {
-  // --- State Management ---
-  const [view, setView] = useState('dashboard'); // dashboard, transactions, inventory, reports
+  // --- State ---
+  const [transactions, setTransactions] = useState([]);
+  const [inventory, setInventory] = useState([]);
+  const [deliveryConfig, setDeliveryConfig] = useState([]);
+  const [packagingConfig, setPackagingConfig] = useState([]);
+  const [view, setView] = useState('dashboard'); // dashboard, transactions, inventory, reports, settings, users
   const [language, setLanguage] = useState('en'); // en, fr, ar
+  const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
-  const [users, setUsers] = useState(() => {
-    const saved = localStorage.getItem('users');
-    return saved ? JSON.parse(saved) : [{ id: '1', name: 'Admin', pin: '1234', role: 'admin' }];
-  });
-  const [transactions, setTransactions] = useState(() => {
-    const saved = localStorage.getItem('transactions');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [inventory, setInventory] = useState(() => {
-    const saved = localStorage.getItem('inventory');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [deliveryConfig, setDeliveryConfig] = useState(() => {
-    const saved = localStorage.getItem('deliveryConfig');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [packagingConfig, setPackagingConfig] = useState(() => {
-    const saved = localStorage.getItem('packagingConfig');
-    return saved ? JSON.parse(saved) : [];
-  });
 
-  // --- Persistence ---
+  // --- Initial Load (Supabase) ---
   useEffect(() => {
-    localStorage.setItem('transactions', JSON.stringify(transactions));
-  }, [transactions]);
+    const fetchData = async () => {
+      const { data: invData } = await supabase.from('inventory').select('*');
+      if (invData) setInventory(invData);
 
-  useEffect(() => {
-    localStorage.setItem('inventory', JSON.stringify(inventory));
-  }, [inventory]);
+      const { data: txData } = await supabase.from('transactions').select('*').order('date', { ascending: false });
+      if (txData) setTransactions(txData);
 
-  useEffect(() => {
-    localStorage.setItem('deliveryConfig', JSON.stringify(deliveryConfig));
-  }, [deliveryConfig]);
+      const { data: userData } = await supabase.from('app_users').select('*');
+      if (userData) setUsers(userData);
 
-  useEffect(() => {
-    localStorage.setItem('packagingConfig', JSON.stringify(packagingConfig));
-  }, [packagingConfig]);
+      const { data: delData } = await supabase.from('delivery_config').select('*');
+      if (delData) setDeliveryConfig(delData);
 
-  useEffect(() => {
-    localStorage.setItem('users', JSON.stringify(users));
-  }, [users]);
+      const { data: pkgData } = await supabase.from('packaging_config').select('*');
+      if (pkgData) setPackagingConfig(pkgData);
+    };
+
+    fetchData();
+
+    // Real-time subscriptions
+    const invSub = supabase.channel('inventory').on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, payload => {
+      if (payload.eventType === 'INSERT') setInventory(prev => [...prev, payload.new]);
+      if (payload.eventType === 'UPDATE') setInventory(prev => prev.map(i => i.id === payload.new.id ? payload.new : i));
+      if (payload.eventType === 'DELETE') setInventory(prev => prev.filter(i => i.id !== payload.old.id));
+    }).subscribe();
+
+    const txSub = supabase.channel('transactions').on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, payload => {
+      if (payload.eventType === 'INSERT') setTransactions(prev => [payload.new, ...prev]);
+      // Note: For complex updates/deletes that affect order, re-fetching might be safer, but simple state updates work for now
+      if (payload.eventType === 'DELETE') setTransactions(prev => prev.filter(t => t.id !== payload.old.id));
+    }).subscribe();
+
+    return () => {
+      supabase.removeChannel(invSub);
+      supabase.removeChannel(txSub);
+    };
+  }, []);
 
   // --- Derived State (Metrics) ---
   const totalIncome = transactions
@@ -790,98 +799,108 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const newTransaction = {
       ...formData,
-      id: generateId(),
       amount: parseFloat(formData.amount) * (formData.quantity || 1),
-      deliveryCost: parseFloat(formData.deliveryCost) || 0,
-      packagingCost: parseFloat(formData.packagingCost) || 0
+      delivery_cost: parseFloat(formData.deliveryCost) || 0,
+      packaging_cost: parseFloat(formData.packagingCost) || 0,
+      item_id: formData.itemId || null
     };
 
-    // Inventory Logic
-    if (formData.type === 'sale' && formData.itemId) {
-      const item = inventory.find(i => i.id === formData.itemId);
-      if (item) {
-        if (parseInt(item.quantity) < parseInt(formData.quantity)) {
-          alert('Insufficient stock!');
-          return;
+    // Remove camelCase keys that don't match DB columns if necessary, or just rely on Supabase ignoring extra fields if configured, 
+    // but better to be precise. We'll construct the DB object explicitly.
+    const dbTransaction = {
+      date: newTransaction.date,
+      type: newTransaction.type,
+      category: newTransaction.category,
+      party: newTransaction.party,
+      item_id: newTransaction.item_id,
+      quantity: newTransaction.quantity,
+      amount: newTransaction.amount,
+      notes: newTransaction.notes,
+      delivery_cost: newTransaction.delivery_cost,
+      packaging_cost: newTransaction.packaging_cost
+    };
+
+    const { data: txData, error: txError } = await supabase.from('transactions').insert([dbTransaction]).select();
+
+    if (txData) {
+      // Inventory Logic (Supabase)
+      if (formData.type === 'sale' && formData.itemId) {
+        const item = inventory.find(i => i.id === formData.itemId);
+        if (item) {
+          if (parseInt(item.quantity) < parseInt(formData.quantity)) {
+            alert(t('stockInsufficient'));
+            return;
+          }
+          const newQty = parseInt(item.quantity) - parseInt(formData.quantity);
+          await supabase.from('inventory').update({ quantity: newQty }).eq('id', formData.itemId);
         }
-        const updatedInventory = inventory.map(i =>
-          i.id === formData.itemId
-            ? { ...i, quantity: parseInt(i.quantity) - parseInt(formData.quantity) }
-            : i
-        );
-        setInventory(updatedInventory);
-      }
-    } else if (formData.type === 'purchase' && formData.itemId) {
-      const item = inventory.find(i => i.id === formData.itemId);
-      if (item) {
-        // Weighted Average Cost (WAC) Logic
-        const currentQty = parseInt(item.quantity);
-        const newQty = parseInt(formData.quantity);
-        const currentBuyPrice = parseFloat(item.buyPrice);
-        const purchasePrice = parseFloat(formData.amount); // Unit price from form
+      } else if (formData.type === 'purchase' && formData.itemId) {
+        const item = inventory.find(i => i.id === formData.itemId);
+        if (item) {
+          // WAC Logic
+          const currentQty = parseInt(item.quantity);
+          const newQty = parseInt(formData.quantity);
+          const currentBuyPrice = parseFloat(item.buyPrice);
+          const purchasePrice = parseFloat(formData.amount);
 
-        const totalValue = (currentQty * currentBuyPrice) + (newQty * purchasePrice);
-        const totalQty = currentQty + newQty;
-        const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
+          const totalValue = (currentQty * currentBuyPrice) + (newQty * purchasePrice);
+          const totalQty = currentQty + newQty;
+          const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
 
-        const updatedInventory = inventory.map(i =>
-          i.id === formData.itemId
-            ? { ...i, quantity: totalQty, buyPrice: newBuyPrice }
-            : i
-        );
-        setInventory(updatedInventory);
+          await supabase.from('inventory').update({ quantity: totalQty, buy_price: newBuyPrice }).eq('id', formData.itemId);
+        }
       }
+
+      // setTransactions is handled by real-time subscription in App.jsx, but we can update locally for instant feedback if needed.
+      // For now, we rely on the subscription or parent refresh. 
+      // Actually, App.jsx passes setTransactions. We should probably let the subscription handle it to avoid double entry if we are not careful.
+      // But to be safe and responsive:
+      // setTransactions([txData[0], ...transactions]); 
+
+      setShowForm(false);
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        type: 'sale',
+        category: '',
+        party: '',
+        itemId: '',
+        quantity: '',
+        amount: '',
+        notes: '',
+        deliveryCost: '',
+        packagingCost: ''
+      });
+      setSelectedCompany('');
+      setSelectedPackaging('');
     }
-
-    setTransactions([newTransaction, ...transactions]);
-    setShowForm(false);
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      type: 'sale',
-      category: '',
-      party: '',
-      itemId: '',
-      quantity: '',
-      amount: '',
-      notes: '',
-      deliveryCost: '',
-      packagingCost: ''
-    });
-    setSelectedCompany('');
-    setSelectedPackaging('');
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
       const transaction = transactions.find(t => t.id === id);
 
-      // Revert Inventory Logic
-      if (transaction && transaction.itemId) {
-        const item = inventory.find(i => i.id === transaction.itemId);
+      if (transaction && transaction.item_id) {
+        const item = inventory.find(i => i.id === transaction.item_id);
         if (item) {
           let newQuantity = parseInt(item.quantity);
 
           if (transaction.type === 'sale') {
-            // If it was a sale, add back the quantity
             newQuantity += parseInt(transaction.quantity);
           } else if (transaction.type === 'purchase') {
-            // If it was a purchase, remove the quantity
             newQuantity -= parseInt(transaction.quantity);
           }
 
-          const updatedInventory = inventory.map(i =>
-            i.id === transaction.itemId ? { ...i, quantity: newQuantity } : i
-          );
-          setInventory(updatedInventory);
+          await supabase.from('inventory').update({ quantity: newQuantity }).eq('id', transaction.item_id);
         }
       }
 
-      setTransactions(transactions.filter(t => t.id !== id));
+      await supabase.from('transactions').delete().eq('id', id);
+      // setTransactions handled by subscription
     }
   };
 
@@ -1200,13 +1219,13 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
 const InventoryManager = ({ inventory, setInventory, t }) => {
   const [showForm, setShowForm] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     buyPrice: '',
     sellPrice: '',
     quantity: '',
-    lowStockThreshold: '5'
+    lowStockThreshold: 5
   });
 
   const handleExport = () => {
@@ -1225,27 +1244,36 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
     XLSX.writeFile(wb, `Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingItem) {
-      setInventory(inventory.map(item => item.id === editingItem.id ? { ...formData, id: item.id } : item));
+    const dbItem = {
+      name: formData.name,
+      quantity: parseInt(formData.quantity),
+      buy_price: parseFloat(formData.buyPrice),
+      sell_price: parseFloat(formData.sellPrice),
+      low_stock_threshold: parseInt(formData.lowStockThreshold)
+    };
+
+    if (isEditing) {
+      await supabase.from('inventory').update(dbItem).eq('id', formData.id);
     } else {
-      setInventory([...inventory, { ...formData, id: generateId() }]);
+      await supabase.from('inventory').insert([dbItem]);
     }
+
     setShowForm(false);
-    setEditingItem(null);
-    setFormData({ name: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: '5' });
+    setFormData({ name: '', quantity: '', buyPrice: '', sellPrice: '', lowStockThreshold: 5 });
+    setIsEditing(false);
   };
 
   const handleEdit = (item) => {
-    setFormData(item);
-    setEditingItem(item);
+    setFormData({ ...item, buyPrice: item.buy_price, sellPrice: item.sell_price, lowStockThreshold: item.low_stock_threshold }); // Map DB snake_case to form camelCase
+    setIsEditing(true);
     setShowForm(true);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
-      setInventory(inventory.filter(item => item.id !== id));
+      await supabase.from('inventory').delete().eq('id', id);
     }
   };
 
@@ -1550,59 +1578,69 @@ const ReportView = ({ transactions, totalIncome, totalExpenses, netProfit, t }) 
 
 
 const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setPackagingConfig, t }) => {
-  const [newCompany, setNewCompany] = useState('');
+  const [newCompany, setNewCompany] = useState({ name: '' });
   const [newRate, setNewRate] = useState({ city: '', cost: '' });
   const [selectedCompanyId, setSelectedCompanyId] = useState(null);
   const [newPackaging, setNewPackaging] = useState({ name: '', cost: '' });
 
   // Helper to add a company
-  const addCompany = () => {
-    if (!newCompany) return;
-    setDeliveryConfig([...deliveryConfig, { id: generateId(), name: newCompany, rates: [] }]);
-    setNewCompany('');
+  const handleAddDeliveryCompany = async () => {
+    if (newCompany.name) {
+      const { data } = await supabase.from('delivery_config').insert([{ name: newCompany.name, rates: [] }]).select();
+      if (data) {
+        setDeliveryConfig([...deliveryConfig, data[0]]);
+        setNewCompany({ name: '' });
+      }
+    }
   };
 
-  // Helper to delete a company
-  const deleteCompany = (id) => {
+  const handleDeleteDeliveryCompany = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
+      await supabase.from('delivery_config').delete().eq('id', id);
       setDeliveryConfig(deliveryConfig.filter(c => c.id !== id));
       if (selectedCompanyId === id) setSelectedCompanyId(null);
     }
   };
 
-  // Helper to add a rate to a company
-  const addRate = () => {
-    if (!selectedCompanyId || !newRate.city || !newRate.cost) return;
-    setDeliveryConfig(deliveryConfig.map(c => {
-      if (c.id === selectedCompanyId) {
-        return { ...c, rates: [...c.rates, { id: generateId(), ...newRate }] };
-      }
-      return c;
-    }));
-    setNewRate({ city: '', cost: '' });
+  const handleAddRate = async (companyId) => {
+    if (newRate.city && newRate.cost) {
+      const company = deliveryConfig.find(c => c.id === companyId);
+      const updatedRates = [...(company.rates || []), { ...newRate }]; // No ID needed for JSONB objects inside array
+
+      await supabase.from('delivery_config').update({ rates: updatedRates }).eq('id', companyId);
+
+      setDeliveryConfig(deliveryConfig.map(c =>
+        c.id === companyId ? { ...c, rates: updatedRates } : c
+      ));
+      setNewRate({ city: '', cost: '' });
+    }
   };
 
-  // Helper to delete a rate
-  const deleteRate = (companyId, rateId) => {
-    const updated = deliveryConfig.map(c => {
-      if (c.id === companyId) {
-        return { ...c, rates: c.rates.filter(r => r.id !== rateId) };
-      }
-      return c;
-    });
-    setDeliveryConfig(updated);
+  const handleDeleteRate = async (companyId, rateIndex) => {
+    const company = deliveryConfig.find(c => c.id === companyId);
+    const updatedRates = company.rates.filter((_, index) => index !== rateIndex);
+
+    await supabase.from('delivery_config').update({ rates: updatedRates }).eq('id', companyId);
+
+    setDeliveryConfig(deliveryConfig.map(c =>
+      c.id === companyId ? { ...c, rates: updatedRates } : c
+    ));
   };
 
   // Helper to add packaging
-  const addPackaging = () => {
-    if (!newPackaging.name || !newPackaging.cost) return;
-    setPackagingConfig([...packagingConfig, { id: generateId(), ...newPackaging }]);
-    setNewPackaging({ name: '', cost: '' });
+  const handleAddPackaging = async () => {
+    if (newPackaging.name && newPackaging.cost) {
+      const { data } = await supabase.from('packaging_config').insert([{ name: newPackaging.name, cost: parseFloat(newPackaging.cost) }]).select();
+      if (data) {
+        setPackagingConfig([...packagingConfig, data[0]]);
+        setNewPackaging({ name: '', cost: '' });
+      }
+    }
   };
 
-  // Helper to delete packaging
-  const deletePackaging = (id) => {
+  const handleDeletePackaging = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
+      await supabase.from('packaging_config').delete().eq('id', id);
       setPackagingConfig(packagingConfig.filter(p => p.id !== id));
     }
   };
@@ -1613,117 +1651,134 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <h3 className="text-xl font-bold text-gray-800 mb-4">{t('deliveryConfig')}</h3>
 
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-2 mb-4">
           <input
             type="text"
-            placeholder={t('addCompany')}
-            className="flex-1 border rounded-lg px-4 py-2"
-            value={newCompany}
-            onChange={(e) => setNewCompany(e.target.value)}
+            placeholder={t('companyName')}
+            className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+            value={newCompany.name}
+            onChange={e => setNewCompany({ ...newCompany, name: e.target.value })}
           />
-          <button onClick={addCompany} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-            <Plus size={20} />
+          <button
+            onClick={handleAddDeliveryCompany}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          >
+            <Plus size={18} /> {t('add')}
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <h4 className="font-semibold text-gray-700">{t('delivery')}</h4>
-            {deliveryConfig.map(company => (
-              <div
-                key={company.id}
-                className={`p-3 rounded-lg border cursor-pointer flex justify-between items-center ${selectedCompanyId === company.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}
-                onClick={() => setSelectedCompanyId(company.id)}
-              >
-                <span className="font-medium">{company.name}</span>
-                <button onClick={(e) => { e.stopPropagation(); deleteCompany(company.id); }} className="text-red-500 hover:text-red-700">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {selectedCompanyId && (
-            <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
-              <h4 className="font-semibold text-gray-700">{t('rates')} - {deliveryConfig.find(c => c.id === selectedCompanyId)?.name}</h4>
-
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder={t('city')}
-                  className="flex-1 border rounded px-2 py-1 text-sm"
-                  value={newRate.city}
-                  onChange={(e) => setNewRate({ ...newRate, city: e.target.value })}
-                />
-                <input
-                  type="number"
-                  placeholder={t('cost')}
-                  className="w-24 border rounded px-2 py-1 text-sm"
-                  value={newRate.cost}
-                  onChange={(e) => setNewRate({ ...newRate, cost: e.target.value })}
-                />
-                <button onClick={addRate} className="bg-green-600 text-white p-1 rounded hover:bg-green-700">
-                  <Plus size={16} />
+        <div className="space-y-4">
+          {deliveryConfig.map(company => (
+            <div key={company.id} className="border rounded-lg p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="font-bold text-lg">{company.name}</h4>
+                <button
+                  onClick={() => handleDeleteDeliveryCompany(company.id)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  <Trash2 size={18} />
                 </button>
               </div>
 
-              <div className="space-y-2">
-                {deliveryConfig.find(c => c.id === selectedCompanyId)?.rates.map(rate => (
-                  <div key={rate.id} className="flex justify-between items-center bg-white p-2 rounded border border-gray-200 text-sm">
-                    <span>{rate.city}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">{formatCurrency(rate.cost)}</span>
-                      <button onClick={() => deleteRate(selectedCompanyId, rate.id)} className="text-red-500 hover:text-red-700">
-                        <Trash2 size={14} />
-                      </button>
+              {/* Rates */}
+              <div className="pl-4 border-l-2 border-gray-100">
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder={t('city')}
+                    className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm"
+                    value={selectedCompanyId === company.id ? newRate.city : ''}
+                    onChange={e => {
+                      setSelectedCompanyId(company.id);
+                      setNewRate({ ...newRate, city: e.target.value });
+                    }}
+                  />
+                  <input
+                    type="number"
+                    placeholder={t('cost')}
+                    className="w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 text-sm"
+                    value={selectedCompanyId === company.id ? newRate.cost : ''}
+                    onChange={e => {
+                      setSelectedCompanyId(company.id);
+                      setNewRate({ ...newRate, cost: e.target.value });
+                    }}
+                  />
+                  <button
+                    onClick={() => handleAddRate(company.id)}
+                    className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  {company.rates && company.rates.map((rate, index) => (
+                    <div key={index} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded">
+                      <span>{rate.city}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="font-medium">{formatCurrency(rate.cost)}</span>
+                        <button
+                          onClick={() => handleDeleteRate(company.id, index)}
+                          className="text-red-400 hover:text-red-600"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-          )}
+          ))}
         </div>
+
       </div>
 
       {/* Packaging Configuration */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <h3 className="text-xl font-bold text-gray-800 mb-4">{t('packagingConfig')}</h3>
 
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-2 mb-4">
           <input
             type="text"
-            placeholder={t('name')}
-            className="flex-1 border rounded-lg px-4 py-2"
+            placeholder={t('packagingName')}
+            className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
             value={newPackaging.name}
-            onChange={(e) => setNewPackaging({ ...newPackaging, name: e.target.value })}
+            onChange={e => setNewPackaging({ ...newPackaging, name: e.target.value })}
           />
           <input
             type="number"
             placeholder={t('cost')}
-            className="w-32 border rounded-lg px-4 py-2"
+            className="w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
             value={newPackaging.cost}
-            onChange={(e) => setNewPackaging({ ...newPackaging, cost: e.target.value })}
+            onChange={e => setNewPackaging({ ...newPackaging, cost: e.target.value })}
           />
-          <button onClick={addPackaging} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-            <Plus size={20} />
+          <button
+            onClick={handleAddPackaging}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          >
+            <Plus size={18} /> {t('add')}
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
           {packagingConfig.map(pkg => (
-            <div key={pkg.id} className="p-4 rounded-lg border border-gray-200 flex justify-between items-center bg-gray-50">
-              <div>
-                <p className="font-medium text-gray-900">{pkg.name}</p>
-                <p className="text-sm text-gray-500">{formatCurrency(pkg.cost)}</p>
+            <div key={pkg.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
+              <span className="font-medium">{pkg.name}</span>
+              <div className="flex items-center gap-4">
+                <span className="text-gray-600">{formatCurrency(pkg.cost)}</span>
+                <button
+                  onClick={() => handleDeletePackaging(pkg.id)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  <Trash2 size={18} />
+                </button>
               </div>
-              <button onClick={() => deletePackaging(pkg.id)} className="text-red-500 hover:text-red-700">
-                <Trash2 size={18} />
-              </button>
             </div>
           ))}
         </div>
-      </div >
-    </div >
+      </div>
+    </div>
   );
 };
 
