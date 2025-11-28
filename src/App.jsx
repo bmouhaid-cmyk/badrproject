@@ -456,7 +456,23 @@ function App() {
 
         const { data: userData, error: userError } = await supabase.from('app_users').select('*');
         if (userError) throw userError;
-        if (userData) setUsers(userData);
+        if (userData && userData.length > 0) {
+          setUsers(userData);
+        } else {
+          // Auto-create default admin if no users exist
+          console.log('No users found. Creating default Admin...');
+          const { data: newAdmin, error: createError } = await supabase
+            .from('app_users')
+            .insert([{ name: 'Admin', pin: '1234', role: 'admin' }])
+            .select();
+
+          if (newAdmin) {
+            setUsers(newAdmin);
+            console.log('Default Admin created.');
+          } else if (createError) {
+            console.error('Failed to create default admin:', createError);
+          }
+        }
 
         const { data: delData, error: delError } = await supabase.from('delivery_config').select('*');
         if (delError) throw delError;
