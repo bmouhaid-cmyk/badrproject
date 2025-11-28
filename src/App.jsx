@@ -521,7 +521,7 @@ function App() {
         expense += parseFloat(t.amount || 0);
       }
       if (t.type === 'sale') {
-        expense += parseFloat(t.deliveryCost || 0) + parseFloat(t.packagingCost || 0);
+        expense += parseFloat(t.delivery_cost || 0) + parseFloat(t.packaging_cost || 0);
       }
       return acc + expense;
     }, 0);
