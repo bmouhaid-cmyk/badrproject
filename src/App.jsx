@@ -1458,7 +1458,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
               <tr key={item.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                  {parseInt(item.quantity) <= parseInt(item.lowStockThreshold) && (
+                  {parseInt(item.quantity) <= parseInt(item.low_stock_threshold) && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
                       {t('lowStock')}
                     </span>
@@ -1468,13 +1468,13 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
                   {item.quantity}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatCurrency(item.buyPrice)}
+                  {formatCurrency(item.buy_price)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatCurrency(item.sellPrice)}
+                  {formatCurrency(item.sell_price)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatCurrency(item.quantity * item.buyPrice)}
+                  {formatCurrency(item.quantity * item.buy_price)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-900 mr-4">
