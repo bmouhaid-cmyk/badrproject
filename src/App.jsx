@@ -257,7 +257,6 @@ const LoginScreen = ({ users, onLogin, t }) => {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    console.log('Login Attempt:', { enteredPin: pin, availableUsers: users });
     const user = users.find(u => u.pin === pin);
     if (user) {
       onLogin(user);
@@ -528,8 +527,8 @@ function App() {
 
   const netProfit = totalIncome - totalExpenses;
 
-  const inventoryValue = inventory.reduce((acc, item) => {
-    return acc + (parseFloat(item.buyPrice || 0) * parseFloat(item.quantity || 0));
+  const inventoryValue = inventory.reduce((sum, item) => {
+    return sum + (parseFloat(item.buy_price || 0) * parseInt(item.quantity || 0));
   }, 0);
 
   // --- Helper Functions ---
@@ -794,11 +793,11 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       Type: t.type,
       Party: t.party,
       Category: t.category,
-      Item: t.itemId ? (inventory.find(i => i.id === t.itemId)?.name || 'Unknown') : '',
+      Item: t.item_id ? (inventory.find(i => i.id === t.item_id)?.name || 'Unknown') : '',
       Quantity: t.quantity,
       Amount: t.amount,
-      'Delivery Cost': t.deliveryCost || 0,
-      'Packaging Cost': t.packagingCost || 0,
+      'Delivery Cost': t.delivery_cost || 0,
+      'Packaging Cost': t.packaging_cost || 0,
       Notes: t.notes
     }));
 
@@ -820,7 +819,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       setFormData({
         ...formData,
         itemId,
-        amount: formData.type === 'sale' ? item.sellPrice : item.buyPrice
+        amount: formData.type === 'sale' ? item.sell_price : item.buy_price
       });
     } else {
       setFormData({ ...formData, itemId, amount: '' });
@@ -873,7 +872,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
           // WAC Logic
           const currentQty = parseInt(item.quantity);
           const newQty = parseInt(formData.quantity);
-          const currentBuyPrice = parseFloat(item.buyPrice);
+          const currentBuyPrice = parseFloat(item.buy_price);
           const purchasePrice = parseFloat(formData.amount);
 
           const totalValue = (currentQty * currentBuyPrice) + (newQty * purchasePrice);
@@ -1259,11 +1258,11 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
   const handleExport = () => {
     const data = inventory.map(item => ({
       Name: item.name,
-      'Buy Price': item.buyPrice,
-      'Sell Price': item.sellPrice,
+      'Buy Price': item.buy_price,
+      'Sell Price': item.sell_price,
       Quantity: item.quantity,
-      'Low Stock Threshold': item.lowStockThreshold,
-      'Total Value': item.buyPrice * item.quantity
+      'Low Stock Threshold': item.low_stock_threshold,
+      'Total Value': item.buy_price * item.quantity
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -1319,8 +1318,8 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
           </button>
           <button
             onClick={() => {
-              setEditingItem(null);
-              setFormData({ name: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: '5' });
+              setIsEditing(false);
+              setFormData({ name: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 });
               setShowForm(true);
             }}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
@@ -1334,7 +1333,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
-            <h4 className="text-lg font-bold mb-4">{editingItem ? t('edit') : t('addItem')}</h4>
+            <h4 className="text-lg font-bold mb-4">{isEditing ? t('edit') : t('addItem')}</h4>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">{t('itemName')}</label>
@@ -1633,7 +1632,7 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
   const handleAddRate = async (companyId) => {
     if (newRate.city && newRate.cost) {
       const company = deliveryConfig.find(c => c.id === companyId);
-      const updatedRates = [...(company.rates || []), { ...newRate }]; // No ID needed for JSONB objects inside array
+      const updatedRates = [...(company.rates || []), { ...newRate, id: generateId() }]; // Add ID for key prop
 
       await supabase.from('delivery_config').update({ rates: updatedRates }).eq('id', companyId);
 
