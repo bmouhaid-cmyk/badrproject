@@ -162,6 +162,7 @@ const translations = {
     deliveryCompany: 'Société de Livraison',
     lowStock: 'Stock Faible',
     suppliers: 'Fournisseurs',
+    pendingBalance: 'Reste à payer',
     financialReport: 'Rapport Financier',
     shareSummary: 'Partager Résumé',
     printReport: 'Imprimer',
@@ -244,6 +245,7 @@ const translations = {
     deliveryCompany: 'شركة التوصيل',
     lowStock: 'مخزون منخفض',
     suppliers: 'الموردين',
+    pendingBalance: 'الباقي للدفع',
     financialReport: 'التقرير المالي',
     shareSummary: 'مشاركة الملخص',
     printReport: 'طباعة التقرير',
@@ -780,6 +782,7 @@ function App() {
             <SupplierManager
               suppliers={suppliers}
               setSuppliers={setSuppliers}
+              transactions={transactions}
               t={t}
             />
           )}
@@ -2045,10 +2048,17 @@ const ReportView = ({ transactions, totalIncome, totalExpenses, netProfit, t }) 
   );
 };
 
-const SupplierManager = ({ suppliers, setSuppliers, t }) => {
+const SupplierManager = ({ suppliers, setSuppliers, transactions, t }) => {
   const [newSupplier, setNewSupplier] = useState({ name: '', contact: '' });
   const [editingId, setEditingId] = useState(null);
   const [editingData, setEditingData] = useState({ name: '', contact: '' });
+
+  const getPendingBalance = (supplierName) => {
+    if (!transactions) return 0;
+    return transactions
+      .filter(t => t.type === 'purchase' && t.status === 'pending' && t.party === supplierName)
+      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+  };
 
   const handleAdd = async () => {
     if (newSupplier.name) {
@@ -2111,6 +2121,7 @@ const SupplierManager = ({ suppliers, setSuppliers, t }) => {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('name')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('phone')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('pendingBalance')}</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
               </tr>
             </thead>
@@ -2140,6 +2151,11 @@ const SupplierManager = ({ suppliers, setSuppliers, t }) => {
                     ) : (
                       <div className="text-sm text-gray-500">{supplier.contact || '-'}</div>
                     )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-red-600">
+                      {formatCurrency(getPendingBalance(supplier.name))}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     {editingId === supplier.id ? (
