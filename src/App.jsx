@@ -1109,6 +1109,54 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     }
   };
 
+  const handleStatusChange = async (transaction, newStatus) => {
+    const oldStatus = transaction.status;
+    if (oldStatus === newStatus) return;
+
+    // 1. Update Transaction in DB
+    const { error } = await supabase.from('transactions').update({ status: newStatus }).eq('id', transaction.id);
+    if (error) {
+      alert('Error updating status: ' + error.message);
+      return;
+    }
+
+    // 2. Update Inventory (if applicable)
+    if (transaction.item_id) {
+      const item = inventory.find(i => i.id === transaction.item_id);
+      if (item) {
+        let qtyChange = 0;
+        const qty = parseInt(transaction.quantity || 0);
+
+        // Case A: Was Active (Pending/Completed) -> Becomes Refused (Inactive)
+        // Action: Add back to stock (Revert)
+        if (oldStatus !== 'refused' && newStatus === 'refused') {
+          if (transaction.type === 'sale') qtyChange = qty; // Add back
+          else if (transaction.type === 'purchase') qtyChange = -qty; // Remove (un-buy)
+        }
+
+        // Case B: Was Refused (Inactive) -> Becomes Active (Pending/Completed)
+        // Action: Deduct from stock (Apply)
+        else if (oldStatus === 'refused' && newStatus !== 'refused') {
+          if (transaction.type === 'sale') qtyChange = -qty; // Deduct
+          else if (transaction.type === 'purchase') qtyChange = qty; // Add (buy)
+        }
+
+        // Case C: Pending <-> Completed
+        // Action: No inventory change (both are considered "committed" for stock, just different for income)
+
+        if (qtyChange !== 0) {
+          const newQty = parseInt(item.quantity) + qtyChange;
+          await supabase.from('inventory').update({ quantity: newQty }).eq('id', item.id);
+          // Update local inventory
+          setInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: newQty } : i));
+        }
+      }
+    }
+
+    // 3. Update Local Transaction State
+    setTransactions(prev => prev.map(t => t.id === transaction.id ? { ...t, status: newStatus } : t));
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -1412,7 +1460,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('type')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('status')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('client')}/{t('supplier')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('details')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('amount')}</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('actions')}</th>
               </tr>
@@ -1431,18 +1479,25 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                    <select
+                      className={`text-xs font-semibold rounded-full px-2 py-1 border-0 cursor-pointer focus:ring-2 focus:ring-offset-1 focus:ring-blue-500
                       ${tItem.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
-                          'bg-yellow-100 text-yellow-800'
-                      }`}>
-                      {t(tItem.status || 'pending')}
-                    </span>
+                          tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
+                            'bg-yellow-100 text-yellow-800'
+                        }`}
+                      value={tItem.status || 'pending'}
+                      onChange={(e) => handleStatusChange(tItem, e.target.value)}
+                      onClick={(e) => e.stopPropagation()} // Prevent row click if any
+                    >
+                      <option value="pending">{t('pending')}</option>
+                      <option value="completed">{t('completed')}</option>
+                      <option value="refused">{t('refused')}</option>
+                    </select>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {tItem.itemId ? (inventory.find(i => i.id === tItem.itemId)?.name || 'Unknown Item') : tItem.category}
-                    {tItem.quantity && ` x${tItem.quantity}`}
+                    {tItem.item_id ? (inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item') : tItem.category}
+                    {tItem.quantity && ` (x${tItem.quantity})`}
                   </td>
                   <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
                     }`}>
