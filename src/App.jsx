@@ -538,15 +538,21 @@ function App() {
     .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
 
   const totalExpenses = transactions
-    .reduce((acc, t) => {
-      let expense = 0;
-      if (t.type === 'purchase' || t.type === 'expense') {
-        expense += parseFloat(t.amount || 0);
+    .reduce((acc, curr) => {
+      if (curr.type === 'expense' || curr.type === 'purchase') {
+        return acc + parseFloat(curr.amount || 0);
+      } else if (curr.type === 'sale') {
+        const delivery = parseFloat(curr.delivery_cost || 0);
+        const packaging = parseFloat(curr.packaging_cost || 0);
+
+        if (curr.status === 'completed') {
+          return acc + delivery + packaging;
+        } else if (curr.status === 'refused') {
+          return acc + packaging; // Only packaging cost for refused
+        }
+        // Pending: add nothing
       }
-      if (t.type === 'sale') {
-        expense += parseFloat(t.delivery_cost || 0) + parseFloat(t.packaging_cost || 0);
-      }
-      return acc + expense;
+      return acc;
     }, 0);
 
   const netProfit = totalIncome - totalExpenses;
