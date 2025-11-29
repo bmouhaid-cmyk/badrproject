@@ -762,6 +762,7 @@ function App() {
               setInventory={setInventory}
               deliveryConfig={deliveryConfig}
               packagingConfig={packagingConfig}
+              suppliers={suppliers}
               t={t}
             />
           )}
@@ -907,7 +908,7 @@ const MetricCard = ({ title, value, icon: Icon, color }) => {
   );
 };
 
-const TransactionManager = ({ transactions, setTransactions, inventory, setInventory, deliveryConfig, packagingConfig, t }) => {
+const TransactionManager = ({ transactions, setTransactions, inventory, setInventory, deliveryConfig, packagingConfig, suppliers, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
