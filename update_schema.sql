@@ -7,3 +7,6 @@ ADD COLUMN status text DEFAULT 'pending';
 
 ALTER TABLE inventory
 ADD COLUMN supplier text;
+
+ALTER TABLE transactions
+ADD COLUMN delivery_company text;

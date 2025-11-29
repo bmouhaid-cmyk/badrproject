@@ -157,6 +157,7 @@ const translations = {
     supplier: 'Fournisseur',
     buyPrice: 'Prix d\'achat',
     sellPrice: 'Prix de vente',
+    deliveryCompany: 'Société de Livraison',
     lowStock: 'Stock Faible',
     financialReport: 'Rapport Financier',
     shareSummary: 'Partager Résumé',
@@ -237,6 +238,7 @@ const translations = {
     supplier: 'المورد',
     buyPrice: 'سعر الشراء',
     sellPrice: 'سعر البيع',
+    deliveryCompany: 'شركة التوصيل',
     lowStock: 'مخزون منخفض',
     financialReport: 'التقرير المالي',
     shareSummary: 'مشاركة الملخص',
@@ -925,7 +927,8 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       Status: t.status,
       'Delivery Cost': t.delivery_cost || 0,
       'Packaging Cost': t.packaging_cost || 0,
-      Notes: t.notes
+      Notes: t.notes,
+      'Delivery Company': t.delivery_company || ''
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -959,6 +962,8 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       deliveryCost: transaction.delivery_cost || '',
       packagingCost: transaction.packaging_cost || ''
     });
+    setSelectedCompany(deliveryConfig.find(c => c.name === transaction.delivery_company)?.id || '');
+    setSelectedPackaging(packagingConfig.find(p => p.cost === transaction.packaging_cost)?.id || '');
     setShowForm(true);
   };
 
@@ -1001,7 +1006,8 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       amount: parseFloat(newTransaction.amount),
       notes: newTransaction.notes,
       delivery_cost: newTransaction.delivery_cost,
-      packaging_cost: newTransaction.packaging_cost
+      packaging_cost: newTransaction.packaging_cost,
+      delivery_company: selectedCompany ? deliveryConfig.find(c => c.id === selectedCompany)?.name : null
     };
 
     let data, error;
@@ -1493,6 +1499,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('type')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('status')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('client')}/{t('supplier')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('deliveryCompany')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('amount')}</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('actions')}</th>
@@ -1529,6 +1536,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {tItem.delivery_company || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {tItem.item_id ? (inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item') : tItem.category}
                     {tItem.quantity && ` (x${tItem.quantity})`}
                   </td>
@@ -1548,7 +1558,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               ))}
               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
                     {t('noTransactions')}
                   </td>
                 </tr>
@@ -1804,9 +1814,6 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
                         {t('lowStock')}
                       </span>
                     )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.quantity}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatCurrency(item.buy_price)}
