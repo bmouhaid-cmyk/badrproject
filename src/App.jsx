@@ -24,7 +24,8 @@ import {
   X,
   Menu,
   User,
-  Copy
+  Copy,
+  Check
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
