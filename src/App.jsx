@@ -1377,24 +1377,22 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     {selectedCompany && (
                       <select
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                        value={formData.deliveryCost} // We store the cost directly for simplicity, or could store rate ID
+                        value={formData.deliveryCost} // This value might be overwritten by manual input, which is fine
                         onChange={(e) => setFormData({ ...formData, deliveryCost: e.target.value })}
                       >
-                        <option value="">{t('city')}</option>
+                        <option value="">{t('city')} (Optional)</option>
                         {deliveryConfig.find(c => c.id === selectedCompany)?.rates.map(r => (
                           <option key={r.id} value={r.cost}>{r.city} ({formatCurrency(r.cost)})</option>
                         ))}
                       </select>
                     )}
-                    {!selectedCompany && (
-                      <input
-                        type="number"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                        value={formData.deliveryCost}
-                        onChange={e => setFormData({ ...formData, deliveryCost: e.target.value })}
-                        placeholder="Manual Cost (0.00)"
-                      />
-                    )}
+                    <input
+                      type="number"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                      value={formData.deliveryCost}
+                      onChange={e => setFormData({ ...formData, deliveryCost: e.target.value })}
+                      placeholder="Manual Cost (0.00)"
+                    />
                   </div>
 
                   {/* Packaging Selection */}
