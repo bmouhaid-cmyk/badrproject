@@ -564,8 +564,13 @@ function App() {
   // Total Expenses for display (includes purchases if you want to track cash out, but for profit we use COGS)
   const totalExpenses = transactions
     .reduce((acc, curr) => {
-      if (curr.type === 'expense' || curr.type === 'purchase') {
+      if (curr.type === 'expense') {
         return acc + parseFloat(curr.amount || 0);
+      } else if (curr.type === 'purchase') {
+        // Only include purchase if completed
+        if (curr.status === 'completed') {
+          return acc + parseFloat(curr.amount || 0);
+        }
       } else if (curr.type === 'sale') {
         const delivery = parseFloat(curr.delivery_cost || 0);
         const packaging = parseFloat(curr.packaging_cost || 0);
@@ -579,15 +584,10 @@ function App() {
       return acc;
     }, 0);
 
-  const cogs = transactions
-    .filter(t => t.type === 'sale' && t.status === 'completed')
-    .reduce((acc, t) => {
-      const item = inventory.find(i => i.id === t.item_id);
-      const buyPrice = item ? parseFloat(item.buy_price || 0) : 0;
-      return acc + (buyPrice * (parseInt(t.quantity || 0)));
-    }, 0);
-
-  const netProfit = totalIncome - (cogs + operatingExpenses);
+  // Net Profit: Total Income - Total Expenses
+  // Note: We are now using a Cash Flow based approach as requested (Sales - Purchases - Expenses)
+  // instead of Accrual based (Sales - COGS - Expenses).
+  const netProfit = totalIncome - totalExpenses;
 
   const inventoryValue = inventory.reduce((sum, item) => {
     return sum + (parseFloat(item.buy_price || 0) * parseInt(item.quantity || 0));
