@@ -739,6 +739,7 @@ function App() {
               netProfit={netProfit}
               inventoryValue={inventoryValue}
               transactions={transactions}
+              inventory={inventory}
               t={t}
             />
           )}
@@ -807,7 +808,7 @@ function App() {
 
 // --- Placeholder Sub-Components ---
 
-const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, transactions, t }) => {
+const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, transactions, inventory, t }) => {
   const recentTransactions = transactions.slice(0, 5);
 
   return (
@@ -836,7 +837,17 @@ const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, tran
                 <tr key={tItem.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
                   <td className="px-6 py-4 whitespace-nowrap capitalize text-sm text-gray-900">{t(tItem.type)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.party || tItem.category || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {tItem.item_id ? (
+                      <div>
+                        <span className="font-medium text-gray-900">{inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item'}</span>
+                        {tItem.quantity && <span className="text-gray-500 ml-1">(x{tItem.quantity})</span>}
+                        {tItem.party && <span className="text-gray-400 ml-1">- {tItem.party}</span>}
+                      </div>
+                    ) : (
+                      tItem.party || tItem.category || '-'
+                    )}
+                  </td>
                   <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
                     }`}>
                     {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount)}
