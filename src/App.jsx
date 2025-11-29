@@ -1289,7 +1289,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     <option value="">{t('item')}</option>
                     {inventory.map(item => (
                       <option key={item.id} value={item.id}>
-                        {item.name} (Stock: {item.quantity})
+                        {item.name} {item.supplier ? `- ${item.supplier}` : ''} (Stock: {item.quantity})
                       </option>
                     ))}
                   </select>
