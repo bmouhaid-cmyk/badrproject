@@ -152,6 +152,7 @@ const translations = {
     notes: 'Notes',
     addItem: 'Ajouter Article',
     itemName: 'Nom de l\'article',
+    supplier: 'Fournisseur',
     buyPrice: 'Prix d\'achat',
     sellPrice: 'Prix de vente',
     lowStock: 'Stock Faible',
@@ -231,6 +232,7 @@ const translations = {
     notes: 'ملاحظات',
     addItem: 'إضافة عنصر',
     itemName: 'اسم العنصر',
+    supplier: 'المورد',
     buyPrice: 'سعر الشراء',
     sellPrice: 'سعر البيع',
     lowStock: 'مخزون منخفض',
@@ -1539,6 +1541,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
+    supplier: '',
     buyPrice: '',
     sellPrice: '',
     quantity: '',
@@ -1548,6 +1551,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
   const handleExport = () => {
     const data = inventory.map(item => ({
       Name: item.name,
+      Supplier: item.supplier,
       'Buy Price': item.buy_price,
       'Sell Price': item.sell_price,
       Quantity: item.quantity,
@@ -1568,6 +1572,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
     try {
       const dbItem = {
         name: formData.name,
+        supplier: formData.supplier,
         quantity: parseInt(formData.quantity) || 0,
         buy_price: parseFloat(formData.buyPrice) || 0,
         sell_price: parseFloat(formData.sellPrice) || 0,
@@ -1596,7 +1601,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
       }
 
       setShowForm(false);
-      setFormData({ name: '', quantity: '', buyPrice: '', sellPrice: '', lowStockThreshold: 5 });
+      setFormData({ name: '', supplier: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 });
       setIsEditing(false);
     } catch (err) {
       console.error('Unexpected Error:', err);
@@ -1605,7 +1610,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
   };
 
   const handleEdit = (item) => {
-    setFormData({ ...item, buyPrice: item.buy_price, sellPrice: item.sell_price, lowStockThreshold: item.low_stock_threshold }); // Map DB snake_case to form camelCase
+    setFormData({ ...item, buyPrice: item.buy_price, sellPrice: item.sell_price, lowStockThreshold: item.low_stock_threshold, supplier: item.supplier || '' }); // Map DB snake_case to form camelCase
     setIsEditing(true);
     setShowForm(true);
   };
@@ -1631,7 +1636,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
           <button
             onClick={() => {
               setIsEditing(false);
-              setFormData({ name: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 });
+              setFormData({ name: '', supplier: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 });
               setShowForm(true);
             }}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
@@ -1655,6 +1660,16 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('supplier')}</label>
+                <input
+                  type="text"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                  value={formData.supplier}
+                  onChange={e => setFormData({ ...formData, supplier: e.target.value })}
+                  placeholder="Optional"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1727,6 +1742,7 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('supplier')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('quantity')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('buyPrice')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('sellPrice')}</th>
@@ -1739,6 +1755,12 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">{item.supplier || '-'}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.quantity}
                     {parseInt(item.quantity) <= parseInt(item.low_stock_threshold) && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
                         {t('lowStock')}
