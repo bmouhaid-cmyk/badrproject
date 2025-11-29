@@ -22,7 +22,9 @@ import {
   LogOut,
   ShieldAlert,
   X,
-  Menu
+  Menu,
+  User,
+  Copy
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -1638,6 +1640,19 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
     setShowForm(true);
   };
 
+  const handleDuplicate = (item) => {
+    setFormData({
+      name: item.name,
+      supplier: item.supplier || '',
+      buyPrice: item.buy_price,
+      sellPrice: item.sell_price,
+      quantity: '', // Reset quantity for new item
+      lowStockThreshold: item.low_stock_threshold
+    });
+    setIsEditing(false); // Creating a new item, not editing
+    setShowForm(true);
+  };
+
   const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
       await supabase.from('inventory').delete().eq('id', id);
@@ -1803,6 +1818,9 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
                     {formatCurrency(item.quantity * item.buy_price)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onClick={() => handleDuplicate(item)} className="text-gray-600 hover:text-gray-900 mr-4" title={t('duplicate') || 'Duplicate'}>
+                      <Copy size={18} />
+                    </button>
                     <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-900 mr-4">
                       <Edit size={18} />
                     </button>
