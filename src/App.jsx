@@ -2010,6 +2010,9 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
   const [newRate, setNewRate] = useState({ city: '', cost: '' });
   const [selectedCompanyId, setSelectedCompanyId] = useState(null);
   const [newPackaging, setNewPackaging] = useState({ name: '', cost: '' });
+  const [editingCompanyId, setEditingCompanyId] = useState(null);
+  const [editingCompanyName, setEditingCompanyName] = useState('');
+  const [editingRate, setEditingRate] = useState(null); // { companyId, rateIndex, city, cost }
 
   // Helper to add a company
   const handleAddDeliveryCompany = async () => {
@@ -2027,6 +2030,15 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
       await supabase.from('delivery_config').delete().eq('id', id);
       setDeliveryConfig(deliveryConfig.filter(c => c.id !== id));
       if (selectedCompanyId === id) setSelectedCompanyId(null);
+    }
+  };
+
+  const handleUpdateCompany = async (id) => {
+    if (editingCompanyName) {
+      await supabase.from('delivery_config').update({ name: editingCompanyName }).eq('id', id);
+      setDeliveryConfig(deliveryConfig.map(c => c.id === id ? { ...c, name: editingCompanyName } : c));
+      setEditingCompanyId(null);
+      setEditingCompanyName('');
     }
   };
 
@@ -2053,6 +2065,21 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
     setDeliveryConfig(deliveryConfig.map(c =>
       c.id === companyId ? { ...c, rates: updatedRates } : c
     ));
+  };
+
+  const handleUpdateRate = async () => {
+    if (editingRate && editingRate.city && editingRate.cost) {
+      const company = deliveryConfig.find(c => c.id === editingRate.companyId);
+      const updatedRates = [...company.rates];
+      updatedRates[editingRate.rateIndex] = { ...updatedRates[editingRate.rateIndex], city: editingRate.city, cost: editingRate.cost };
+
+      await supabase.from('delivery_config').update({ rates: updatedRates }).eq('id', editingRate.companyId);
+
+      setDeliveryConfig(deliveryConfig.map(c =>
+        c.id === editingRate.companyId ? { ...c, rates: updatedRates } : c
+      ));
+      setEditingRate(null);
+    }
   };
 
   // Helper to add packaging
@@ -2099,10 +2126,34 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
           {deliveryConfig.map(company => (
             <div key={company.id} className="border rounded-lg p-4 border-gray-200">
               <div className="flex justify-between items-center mb-4">
-                <h4 className="font-bold text-lg text-gray-800">{company.name}</h4>
+                {editingCompanyId === company.id ? (
+                  <div className="flex gap-2 flex-1 mr-4">
+                    <input
+                      type="text"
+                      className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-1 bg-white text-gray-900"
+                      value={editingCompanyName}
+                      onChange={e => setEditingCompanyName(e.target.value)}
+                    />
+                    <button onClick={() => handleUpdateCompany(company.id)} className="text-green-600 hover:text-green-800"><Check size={18} /></button>
+                    <button onClick={() => setEditingCompanyId(null)} className="text-gray-600 hover:text-gray-800"><X size={18} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-lg text-gray-800">{company.name}</h4>
+                    <button
+                      onClick={() => {
+                        setEditingCompanyId(company.id);
+                        setEditingCompanyName(company.name);
+                      }}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      <Edit size={16} />
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={() => handleDeleteDeliveryCompany(company.id)}
-                  className="text-red-600 hover:text-red-800"
+                  className="text-red-500 hover:text-red-700"
                 >
                   <Trash2 size={18} />
                 </button>
@@ -2142,16 +2193,45 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
                 <div className="space-y-1">
                   {company.rates && company.rates.map((rate, index) => (
                     <div key={index} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded">
-                      <span className="text-gray-800">{rate.city}</span>
-                      <div className="flex items-center gap-4">
-                        <span className="font-medium text-gray-800">{formatCurrency(rate.cost)}</span>
-                        <button
-                          onClick={() => handleDeleteRate(company.id, index)}
-                          className="text-red-400 hover:text-red-600"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
+                      {editingRate && editingRate.companyId === company.id && editingRate.rateIndex === index ? (
+                        <div className="flex gap-2 flex-1 items-center">
+                          <input
+                            type="text"
+                            className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-1 bg-white text-gray-900 text-xs"
+                            value={editingRate.city}
+                            onChange={e => setEditingRate({ ...editingRate, city: e.target.value })}
+                          />
+                          <input
+                            type="number"
+                            className="w-20 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-1 bg-white text-gray-900 text-xs"
+                            value={editingRate.cost}
+                            onChange={e => setEditingRate({ ...editingRate, cost: e.target.value })}
+                          />
+                          <button onClick={handleUpdateRate} className="text-green-600 hover:text-green-800"><Check size={16} /></button>
+                          <button onClick={() => setEditingRate(null)} className="text-gray-600 hover:text-gray-800"><X size={16} /></button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="text-gray-800">{rate.city}</span>
+                          <div className="flex items-center gap-4">
+                            <span className="font-medium text-gray-800">{formatCurrency(rate.cost)}</span>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingRate({ companyId: company.id, rateIndex: index, city: rate.city, cost: rate.cost })}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                <Edit size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRate(company.id, index)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
