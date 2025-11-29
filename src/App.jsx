@@ -657,6 +657,7 @@ function App() {
           <NavItem id="dashboard" icon={LayoutDashboard} label={t('dashboard')} />
           <NavItem id="transactions" icon={ArrowRightLeft} label={t('transactions')} />
           <NavItem id="inventory" icon={Package} label={t('inventory')} />
+          <NavItem id="suppliers" icon={Truck} label={t('suppliers')} />
           {currentUser.role === 'admin' && (
             <>
               <NavItem id="reports" icon={FileText} label={t('reports')} />
