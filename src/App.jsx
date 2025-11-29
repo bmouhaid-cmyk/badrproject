@@ -25,7 +25,8 @@ import {
   Menu,
   User,
   Copy,
-  Check
+  Check,
+  Truck
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -160,6 +161,7 @@ const translations = {
     sellPrice: 'Prix de vente',
     deliveryCompany: 'Société de Livraison',
     lowStock: 'Stock Faible',
+    suppliers: 'Fournisseurs',
     financialReport: 'Rapport Financier',
     shareSummary: 'Partager Résumé',
     printReport: 'Imprimer',
@@ -241,6 +243,7 @@ const translations = {
     sellPrice: 'سعر البيع',
     deliveryCompany: 'شركة التوصيل',
     lowStock: 'مخزون منخفض',
+    suppliers: 'الموردين',
     financialReport: 'التقرير المالي',
     shareSummary: 'مشاركة الملخص',
     printReport: 'طباعة التقرير',
@@ -465,6 +468,7 @@ function App() {
   const [inventory, setInventory] = useState([]);
   const [deliveryConfig, setDeliveryConfig] = useState([]);
   const [packagingConfig, setPackagingConfig] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [view, setView] = useState('dashboard'); // dashboard, transactions, inventory, reports, settings, users
   const [language, setLanguage] = useState('en'); // en, fr, ar
   const [users, setUsers] = useState([]);
@@ -512,6 +516,10 @@ function App() {
         const { data: pkgData, error: pkgError } = await supabase.from('packaging_config').select('*');
         if (pkgError) throw pkgError;
         if (pkgData) setPackagingConfig(pkgData);
+
+        const { data: supData, error: supError } = await supabase.from('suppliers').select('*').order('name');
+        if (supError) console.error('Error fetching suppliers:', supError); // Don't throw, just log
+        if (supData) setSuppliers(supData);
       } catch (err) {
         console.error('Error fetching data:', err);
         setError('Failed to load data. Please check your connection and configuration.');
@@ -761,6 +769,14 @@ function App() {
             <InventoryManager
               inventory={inventory}
               setInventory={setInventory}
+              t={t}
+            />
+          )}
+
+          {view === 'suppliers' && (
+            <SupplierManager
+              suppliers={suppliers}
+              setSuppliers={setSuppliers}
               t={t}
             />
           )}
@@ -1999,6 +2015,142 @@ const ReportView = ({ transactions, totalIncome, totalExpenses, netProfit, t }) 
         </div>
         <div className="mt-12 pt-8 border-t border-gray-200 text-center text-sm text-gray-400 print:block hidden">
           <p>End of Report • Mabox.ma Management</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SupplierManager = ({ suppliers, setSuppliers, t }) => {
+  const [newSupplier, setNewSupplier] = useState({ name: '', contact: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [editingData, setEditingData] = useState({ name: '', contact: '' });
+
+  const handleAdd = async () => {
+    if (newSupplier.name) {
+      const { data, error } = await supabase.from('suppliers').insert([newSupplier]).select();
+      if (data) {
+        setSuppliers([...suppliers, data[0]]);
+        setNewSupplier({ name: '', contact: '' });
+      }
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm(t('deleteConfirm'))) {
+      await supabase.from('suppliers').delete().eq('id', id);
+      setSuppliers(suppliers.filter(s => s.id !== id));
+    }
+  };
+
+  const handleUpdate = async (id) => {
+    if (editingData.name) {
+      await supabase.from('suppliers').update(editingData).eq('id', id);
+      setSuppliers(suppliers.map(s => s.id === id ? { ...s, ...editingData } : s));
+      setEditingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800">{t('suppliers')}</h2>
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex gap-4 mb-6">
+          <input
+            type="text"
+            placeholder={t('name')}
+            className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+            value={newSupplier.name}
+            onChange={e => setNewSupplier({ ...newSupplier, name: e.target.value })}
+          />
+          <input
+            type="text"
+            placeholder={t('phone')} // Reusing phone translation or contact
+            className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+            value={newSupplier.contact}
+            onChange={e => setNewSupplier({ ...newSupplier, contact: e.target.value })}
+          />
+          <button
+            onClick={handleAdd}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          >
+            <Plus size={20} /> {t('add')}
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('name')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('phone')}</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {suppliers.map(supplier => (
+                <tr key={supplier.id}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {editingId === supplier.id ? (
+                      <input
+                        type="text"
+                        className="w-full rounded border-gray-300 p-1 border"
+                        value={editingData.name}
+                        onChange={e => setEditingData({ ...editingData, name: e.target.value })}
+                      />
+                    ) : (
+                      <div className="text-sm font-medium text-gray-900">{supplier.name}</div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {editingId === supplier.id ? (
+                      <input
+                        type="text"
+                        className="w-full rounded border-gray-300 p-1 border"
+                        value={editingData.contact}
+                        onChange={e => setEditingData({ ...editingData, contact: e.target.value })}
+                      />
+                    ) : (
+                      <div className="text-sm text-gray-500">{supplier.contact || '-'}</div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    {editingId === supplier.id ? (
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => handleUpdate(supplier.id)} className="text-green-600 hover:text-green-900"><Check size={18} /></button>
+                        <button onClick={() => setEditingId(null)} className="text-gray-600 hover:text-gray-900"><X size={18} /></button>
+                      </div>
+                    ) : (
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingId(supplier.id);
+                            setEditingData({ name: supplier.name, contact: supplier.contact });
+                          }}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button onClick={() => handleDelete(supplier.id)} className="text-red-600 hover:text-red-900">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {suppliers.length === 0 && (
+                <tr>
+                  <td colSpan="3" className="px-6 py-4 text-center text-sm text-gray-500">
+                    {t('noData')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
