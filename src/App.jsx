@@ -539,6 +539,24 @@ function App() {
     .filter(t => t.type === 'sale' && t.status === 'completed')
     .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
 
+  const operatingExpenses = transactions
+    .reduce((acc, curr) => {
+      if (curr.type === 'expense') {
+        return acc + parseFloat(curr.amount || 0);
+      } else if (curr.type === 'sale') {
+        const delivery = parseFloat(curr.delivery_cost || 0);
+        const packaging = parseFloat(curr.packaging_cost || 0);
+
+        if (curr.status === 'completed') {
+          return acc + delivery + packaging;
+        } else if (curr.status === 'refused') {
+          return acc + packaging;
+        }
+      }
+      return acc;
+    }, 0);
+
+  // Total Expenses for display (includes purchases if you want to track cash out, but for profit we use COGS)
   const totalExpenses = transactions
     .reduce((acc, curr) => {
       if (curr.type === 'expense' || curr.type === 'purchase') {
@@ -550,14 +568,21 @@ function App() {
         if (curr.status === 'completed') {
           return acc + delivery + packaging;
         } else if (curr.status === 'refused') {
-          return acc + packaging; // Only packaging cost for refused
+          return acc + packaging;
         }
-        // Pending: add nothing
       }
       return acc;
     }, 0);
 
-  const netProfit = totalIncome - totalExpenses;
+  const cogs = transactions
+    .filter(t => t.type === 'sale' && t.status === 'completed')
+    .reduce((acc, t) => {
+      const item = inventory.find(i => i.id === t.item_id);
+      const buyPrice = item ? parseFloat(item.buy_price || 0) : 0;
+      return acc + (buyPrice * (parseInt(t.quantity || 0)));
+    }, 0);
+
+  const netProfit = totalIncome - (cogs + operatingExpenses);
 
   const inventoryValue = inventory.reduce((sum, item) => {
     return sum + (parseFloat(item.buy_price || 0) * parseInt(item.quantity || 0));
