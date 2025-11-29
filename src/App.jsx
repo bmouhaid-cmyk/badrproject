@@ -770,6 +770,7 @@ function App() {
             <InventoryManager
               inventory={inventory}
               setInventory={setInventory}
+              suppliers={suppliers}
               t={t}
             />
           )}
@@ -1340,10 +1341,25 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                   list="parties"
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
                   value={formData.party}
-                  onChange={e => setFormData({ ...formData, party: e.target.value })}
+                  onChange={e => {
+                    const val = e.target.value;
+                    let updates = { party: val };
+
+                    // Auto-fill phone if supplier exists
+                    if (formData.type === 'purchase') {
+                      const supplier = suppliers.find(s => s.name === val);
+                      if (supplier && supplier.contact) {
+                        updates.phone = supplier.contact;
+                      }
+                    }
+                    setFormData({ ...formData, ...updates });
+                  }}
                 />
                 <datalist id="parties">
-                  {parties.map((p, i) => <option key={i} value={p} />)}
+                  {formData.type === 'purchase'
+                    ? suppliers.map(s => <option key={s.id} value={s.name} />)
+                    : parties.map((p, i) => <option key={i} value={p} />)
+                  }
                 </datalist>
               </div>
 
@@ -1600,7 +1616,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   );
 };
 
-const InventoryManager = ({ inventory, setInventory, t }) => {
+const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -1739,15 +1755,21 @@ const InventoryManager = ({ inventory, setInventory, t }) => {
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">{t('supplier')}</label>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('supplier')}</label>
                 <input
                   type="text"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                  list="supplier-list"
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
                   value={formData.supplier}
                   onChange={e => setFormData({ ...formData, supplier: e.target.value })}
-                  placeholder="Optional"
+                  placeholder={t('optional')}
                 />
+                <datalist id="supplier-list">
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.name} />
+                  ))}
+                </datalist>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
