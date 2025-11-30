@@ -942,6 +942,11 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   const [isEditing, setIsEditing] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
+  const [typeFilter, setTypeFilter] = useState('');
+  const [partyFilter, setPartyFilter] = useState('');
+  const [itemFilter, setItemFilter] = useState('');
+  const [deliveryFilter, setDeliveryFilter] = useState('');
+
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     type: 'sale', // sale, purchase, expense
@@ -966,10 +971,21 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   // Derived state for autocomplete
   const parties = [...new Set(transactions.map(t => t.party).filter(Boolean))];
   const categories = [...new Set(transactions.map(t => t.category).filter(Boolean))];
+  const deliveryCompanies = [...new Set(transactions.map(t => t.delivery_company).filter(Boolean))];
 
   const filteredTransactions = transactions.filter(t => {
     if (dateFilter.start && t.date < dateFilter.start) return false;
     if (dateFilter.end && t.date > dateFilter.end) return false;
+    if (typeFilter && t.type !== typeFilter) return false;
+    if (partyFilter && !t.party?.toLowerCase().includes(partyFilter.toLowerCase())) return false;
+
+    if (itemFilter) {
+      const itemName = t.item_id ? (inventory.find(i => i.id === t.item_id)?.name || '') : '';
+      if (!itemName.toLowerCase().includes(itemFilter.toLowerCase())) return false;
+    }
+
+    if (deliveryFilter && t.delivery_company !== deliveryFilter) return false;
+
     return true;
   });
 
@@ -1263,38 +1279,93 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <h3 className="text-xl font-bold text-gray-800">{t('transactions')}</h3>
 
-        <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-gray-200">
-          <span className="text-sm text-gray-500">{t('filter')}:</span>
-          <input
-            type="date"
-            className="border rounded px-2 py-1 text-sm bg-white border-gray-300 text-gray-900"
-            value={dateFilter.start}
-            onChange={e => setDateFilter({ ...dateFilter, start: e.target.value })}
-          />
-          <span className="text-gray-400">-</span>
-          <input
-            type="date"
-            className="border rounded px-2 py-1 text-sm bg-white border-gray-300 text-gray-900"
-            value={dateFilter.end}
-            onChange={e => setDateFilter({ ...dateFilter, end: e.target.value })}
-          />
-        </div>
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <span className="text-sm text-gray-500">{t('filter')}:</span>
+            <input
+              type="date"
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+              value={dateFilter.start}
+              onChange={e => setDateFilter({ ...dateFilter, start: e.target.value })}
+            />
+            <span className="text-gray-400">-</span>
+            <input
+              type="date"
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+              value={dateFilter.end}
+              onChange={e => setDateFilter({ ...dateFilter, end: e.target.value })}
+            />
 
-        <div className="flex space-x-2">
-          <button
-            onClick={handleExport}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700"
-          >
-            <Download size={20} />
-            <span>{t('exportExcel')}</span>
-          </button>
-          <button
-            onClick={() => setShowForm(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
-          >
-            <Plus size={20} />
-            <span>{t('newTransaction')}</span>
-          </button>
+            <select
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+              value={typeFilter}
+              onChange={e => setTypeFilter(e.target.value)}
+            >
+              <option value="">{t('allTypes')}</option>
+              <option value="sale">{t('sale')}</option>
+              <option value="purchase">{t('purchase')}</option>
+              <option value="expense">{t('expense')}</option>
+            </select>
+
+            <input
+              type="text"
+              placeholder={t('client') + '/' + t('supplier')}
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm w-32"
+              value={partyFilter}
+              onChange={e => setPartyFilter(e.target.value)}
+            />
+
+            <input
+              type="text"
+              placeholder={t('item')}
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm w-32"
+              value={itemFilter}
+              onChange={e => setItemFilter(e.target.value)}
+            />
+
+            <select
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+              value={deliveryFilter}
+              onChange={e => setDeliveryFilter(e.target.value)}
+            >
+              <option value="">{t('deliveryCompany')}</option>
+              {deliveryCompanies.map((c, i) => (
+                <option key={i} value={c}>{c}</option>
+              ))}
+            </select>
+
+            {(dateFilter.start || dateFilter.end || typeFilter || partyFilter || itemFilter || deliveryFilter) && (
+              <button
+                onClick={() => {
+                  setDateFilter({ start: '', end: '' });
+                  setTypeFilter('');
+                  setPartyFilter('');
+                  setItemFilter('');
+                  setDeliveryFilter('');
+                }}
+                className="text-sm text-red-600 hover:text-red-800"
+              >
+                {t('clearFilters')}
+              </button>
+            )}
+          </div>
+
+          <div className="flex gap-2 w-full md:w-auto">
+            <button
+              onClick={handleExport}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700"
+            >
+              <Download size={20} />
+              <span>{t('exportExcel')}</span>
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
+            >
+              <Plus size={20} />
+              <span>{t('newTransaction')}</span>
+            </button>
+          </div>
         </div>
       </div>
 
