@@ -607,12 +607,18 @@ function App() {
       return acc + (buyPrice * quantity);
     }, 0);
 
-  // Total Expenses for Profit Calculation = Operating Expenses + COGS
-  // Note: We exclude raw 'purchases' from this because that's asset acquisition, not expense.
-  // However, for cash flow, you might want to see purchases. But "Net Profit" usually implies Accrual basis.
-  const totalExpenses = operatingExpenses + cogs;
+  // Calculate Total Purchases (for Cash Flow / Total Expenses display)
+  const totalPurchases = transactions
+    .filter(t => t.type === 'purchase' && t.status === 'completed')
+    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
 
-  const netProfit = totalIncome - totalExpenses;
+  // Total Expenses for Display (Cash Flow Basis: Operating Expenses + Purchases)
+  // This matches the "previous version" logic as requested.
+  const totalExpenses = operatingExpenses + totalPurchases;
+
+  // Net Profit (Accrual Basis: Income - COGS - Operating Expenses)
+  // This ensures profit is based on actual sales margin, not cash outflow.
+  const netProfit = totalIncome - (cogs + operatingExpenses);
 
   const inventoryValue = inventory.reduce((sum, item) => {
     return sum + (parseFloat(item.buy_price || 0) * parseInt(item.quantity || 0));
