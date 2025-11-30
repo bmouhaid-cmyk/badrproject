@@ -507,10 +507,12 @@ function App() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const { data: invData, error: invError } = await supabase.from('inventory').select('*');
-        if (invError) throw invError;
-        if (invData) setInventory(invData);
+        const { data: inventoryData, error: inventoryError } = await supabase.from('inventory').select('*');
+        if (inventoryError) throw inventoryError;
+        // Filter out deleted items from initial fetch
+        setInventory(inventoryData.filter(i => !i.is_deleted));
 
+        // Fetch Supplierst
         const { data: txData, error: txError } = await supabase.from('transactions').select('*').order('date', { ascending: false });
         if (txError) throw txError;
         if (txData) setTransactions(txData);
@@ -1817,7 +1819,12 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
 
   const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
-      const { error } = await supabase.from('inventory').delete().eq('id', id);
+      // Soft delete: Update is_deleted to true
+      const { error } = await supabase
+        .from('inventory')
+        .update({ is_deleted: true })
+        .eq('id', id);
+
       if (!error) {
         setInventory(prev => prev.filter(item => item.id !== id));
       } else {
@@ -1828,7 +1835,12 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
 
   const handleBulkDelete = async () => {
     if (window.confirm(t('deleteConfirm'))) {
-      const { error } = await supabase.from('inventory').delete().in('id', selectedItems);
+      // Soft delete: Update is_deleted to true for all selected items
+      const { error } = await supabase
+        .from('inventory')
+        .update({ is_deleted: true })
+        .in('id', selectedItems);
+
       if (!error) {
         setInventory(prev => prev.filter(item => !selectedItems.includes(item.id)));
         setSelectedItems([]);
