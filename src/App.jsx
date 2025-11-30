@@ -596,35 +596,22 @@ function App() {
       return acc;
     }, 0);
 
-  // Total Expenses for display (includes purchases if you want to track cash out, but for profit we use COGS)
-  const totalExpenses = transactions
+  // COGS (Cost of Goods Sold) Calculation
+  const cogs = transactions
+    .filter(t => t.type === 'sale' && t.status === 'completed')
     .reduce((acc, curr) => {
-      if (curr.type === 'expense') {
-        // Only include expense if completed
-        if (curr.status === 'completed') {
-          return acc + parseFloat(curr.amount || 0);
-        }
-      } else if (curr.type === 'purchase') {
-        // Only include purchase if completed
-        if (curr.status === 'completed') {
-          return acc + parseFloat(curr.amount || 0);
-        }
-      } else if (curr.type === 'sale') {
-        const delivery = parseFloat(curr.delivery_cost || 0);
-        const packaging = parseFloat(curr.packaging_cost || 0);
-
-        if (curr.status === 'completed') {
-          return acc + delivery + packaging;
-        } else if (curr.status === 'refused') {
-          return acc + packaging;
-        }
-      }
-      return acc;
+      // Find the item to get its buy price
+      const item = inventory.find(i => i.id === curr.item_id);
+      const buyPrice = item ? parseFloat(item.buy_price || 0) : 0;
+      const quantity = parseInt(curr.quantity || 1);
+      return acc + (buyPrice * quantity);
     }, 0);
 
-  // Net Profit: Total Income - Total Expenses
-  // Note: We are now using a Cash Flow based approach as requested (Sales - Purchases - Expenses)
-  // instead of Accrual based (Sales - COGS - Expenses).
+  // Total Expenses for Profit Calculation = Operating Expenses + COGS
+  // Note: We exclude raw 'purchases' from this because that's asset acquisition, not expense.
+  // However, for cash flow, you might want to see purchases. But "Net Profit" usually implies Accrual basis.
+  const totalExpenses = operatingExpenses + cogs;
+
   const netProfit = totalIncome - totalExpenses;
 
   const inventoryValue = inventory.reduce((sum, item) => {
