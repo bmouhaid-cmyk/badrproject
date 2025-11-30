@@ -579,7 +579,10 @@ function App() {
   const operatingExpenses = transactions
     .reduce((acc, curr) => {
       if (curr.type === 'expense') {
-        return acc + parseFloat(curr.amount || 0);
+        // Only include expense if completed
+        if (curr.status === 'completed') {
+          return acc + parseFloat(curr.amount || 0);
+        }
       } else if (curr.type === 'sale') {
         const delivery = parseFloat(curr.delivery_cost || 0);
         const packaging = parseFloat(curr.packaging_cost || 0);
@@ -597,7 +600,10 @@ function App() {
   const totalExpenses = transactions
     .reduce((acc, curr) => {
       if (curr.type === 'expense') {
-        return acc + parseFloat(curr.amount || 0);
+        // Only include expense if completed
+        if (curr.status === 'completed') {
+          return acc + parseFloat(curr.amount || 0);
+        }
       } else if (curr.type === 'purchase') {
         // Only include purchase if completed
         if (curr.status === 'completed') {
