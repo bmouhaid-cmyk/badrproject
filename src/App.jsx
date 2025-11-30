@@ -94,7 +94,8 @@ const translations = {
     noActivity: 'No recent activity',
     noTransactions: 'No transactions found.',
     noInventory: 'No items in inventory.',
-    deleteConfirm: 'Are you sure?',
+    deleteConfirm: 'Are you sure you want to delete this item?',
+    deleteSelected: 'Delete Selected',
     stockInsufficient: 'Insufficient stock!',
     lowStockAlert: 'Low Stock Alert',
     users: 'Users',
@@ -188,7 +189,8 @@ const translations = {
     noActivity: 'Aucune activité récente',
     noTransactions: 'Aucune transaction trouvée.',
     noInventory: 'Aucun article en stock.',
-    deleteConfirm: 'Êtes-vous sûr ?',
+    deleteConfirm: 'Êtes-vous sûr de vouloir supprimer cet élément ?',
+    deleteSelected: 'Supprimer la sélection',
     stockInsufficient: 'Stock insuffisant !',
     lowStockAlert: 'Alerte Stock Faible',
     users: 'Utilisateurs',
@@ -1723,6 +1725,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedItems, setSelectedItems] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
     supplier: '',
@@ -1814,7 +1817,40 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
 
   const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
-      await supabase.from('inventory').delete().eq('id', id);
+      const { error } = await supabase.from('inventory').delete().eq('id', id);
+      if (!error) {
+        setInventory(prev => prev.filter(item => item.id !== id));
+      } else {
+        alert('Error deleting item: ' + error.message);
+      }
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (window.confirm(t('deleteConfirm'))) {
+      const { error } = await supabase.from('inventory').delete().in('id', selectedItems);
+      if (!error) {
+        setInventory(prev => prev.filter(item => !selectedItems.includes(item.id)));
+        setSelectedItems([]);
+      } else {
+        alert('Error deleting items: ' + error.message);
+      }
+    }
+  };
+
+  const toggleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedItems(inventory.map(i => i.id));
+    } else {
+      setSelectedItems([]);
+    }
+  };
+
+  const toggleSelectItem = (id) => {
+    if (selectedItems.includes(id)) {
+      setSelectedItems(prev => prev.filter(i => i !== id));
+    } else {
+      setSelectedItems(prev => [...prev, id]);
     }
   };
 
@@ -1823,6 +1859,16 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
       <div className="flex justify-between items-center">
         <h3 className="text-xl font-bold text-gray-800">{t('inventory')}</h3>
         <div className="flex space-x-2">
+
+          {selectedItems.length > 0 && (
+            <button
+              onClick={handleBulkDelete}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-red-700"
+            >
+              <Trash2 size={20} />
+              <span>{t('deleteSelected')} ({selectedItems.length})</span>
+            </button>
+          )}
           <button
             onClick={handleExport}
             className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700"
@@ -1944,6 +1990,14 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    checked={inventory.length > 0 && selectedItems.length === inventory.length}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('supplier')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('quantity')}</th>
@@ -1956,6 +2010,14 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
             <tbody className="bg-white divide-y divide-gray-200">
               {inventory.map(item => (
                 <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      checked={selectedItems.includes(item.id)}
+                      onChange={() => toggleSelectItem(item.id)}
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{item.name}</div>
                   </td>
@@ -1994,7 +2056,7 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
               ))}
               {inventory.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
                     {t('noInventory')}
                   </td>
                 </tr>
