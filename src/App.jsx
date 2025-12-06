@@ -1410,7 +1410,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
           <h4 className="text-blue-800 font-semibold mb-2">{t('selectedSummary')} ({selectedTransactions.length} {t('items')})</h4>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {(() => {
-              const selectedTxs = transactions.filter(t => selectedTransactions.includes(t.id));
+              const selectedTxs = transactions.filter(t => selectedTransactions.includes(t.id) && t.status !== 'refused');
 
               const income = selectedTxs
                 .filter(t => t.type === 'sale')
