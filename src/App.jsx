@@ -116,7 +116,9 @@ const translations = {
     income: 'Income',
     expenses: 'Expenses',
     incomeVsExpenses: 'Income vs Expenses',
-    profit: 'Profit'
+    profit: 'Profit',
+    selectedSummary: 'Selected Summary',
+    items: 'items'
   },
   fr: {
     dashboard: 'Tableau de bord',
@@ -211,7 +213,9 @@ const translations = {
     income: 'Revenus',
     expenses: 'Dépenses',
     incomeVsExpenses: 'Revenus vs Dépenses',
-    profit: 'Bénéfice'
+    profit: 'Bénéfice',
+    selectedSummary: 'Résumé de la sélection',
+    items: 'éléments'
   },
   ar: {
     dashboard: 'لوحة القيادة',
@@ -305,7 +309,9 @@ const translations = {
     income: 'الدخل',
     expenses: 'المصاريف',
     incomeVsExpenses: 'الدخل مقابل المصاريف',
-    profit: 'الربح'
+    profit: 'الربح',
+    selectedSummary: 'ملخص المحدد',
+    items: 'عناصر'
   }
 };
 
@@ -1398,6 +1404,64 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
           </div>
         </div>
       </div>
+
+      {selectedTransactions.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+          <h4 className="text-blue-800 font-semibold mb-2">{t('selectedSummary')} ({selectedTransactions.length} {t('items')})</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {(() => {
+              const selectedTxs = transactions.filter(t => selectedTransactions.includes(t.id));
+
+              const income = selectedTxs
+                .filter(t => t.type === 'sale')
+                .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
+
+              const expenses = selectedTxs
+                .reduce((acc, curr) => {
+                  if (curr.type === 'expense' || curr.type === 'purchase') return acc + parseFloat(curr.amount || 0);
+                  return acc;
+                }, 0);
+
+              // Operating expenses for sales (delivery + packaging)
+              const salesOpEx = selectedTxs
+                .filter(t => t.type === 'sale')
+                .reduce((acc, curr) => acc + parseFloat(curr.delivery_cost || 0) + parseFloat(curr.packaging_cost || 0), 0);
+
+              const cogs = selectedTxs
+                .filter(t => t.type === 'sale')
+                .reduce((acc, curr) => {
+                  const item = inventory.find(i => i.id === curr.item_id);
+                  const buyPrice = item ? parseFloat(item.buy_price || 0) : 0;
+                  const quantity = parseInt(curr.quantity || 1);
+                  return acc + (buyPrice * quantity);
+                }, 0);
+
+              const totalSelectedExpenses = expenses + salesOpEx; // Pure cash outflow from selection
+              const netProfit = income - (salesOpEx + cogs);
+
+              return (
+                <>
+                  <div className="bg-white p-3 rounded-lg shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase">{t('totalIncome')}</p>
+                    <p className="text-lg font-bold text-green-600">{formatCurrency(income)}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase">{t('totalExpenses')}</p>
+                    <p className="text-lg font-bold text-red-600">{formatCurrency(totalSelectedExpenses)}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase">{t('netProfit')}</p>
+                    <p className={`text-lg font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(netProfit)}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">(Income - COGS - OpEx)</p>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
