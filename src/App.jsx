@@ -118,7 +118,13 @@ const translations = {
     incomeVsExpenses: 'Income vs Expenses',
     profit: 'Profit',
     selectedSummary: 'Selected Summary',
-    items: 'items'
+    items: 'items',
+    revenue: 'Revenue',
+    monthlyTrend: 'Monthly Trend',
+    expenseBreakdown: 'Expense Breakdown',
+    topItems: 'Top Items',
+    pendingCollection: 'Pending Collection',
+    profitMargin: 'Profit Margin'
   },
   fr: {
     dashboard: 'Tableau de bord',
@@ -311,7 +317,13 @@ const translations = {
     incomeVsExpenses: 'الدخل مقابل المصاريف',
     profit: 'الربح',
     selectedSummary: 'ملخص المحدد',
-    items: 'عناصر'
+    items: 'عناصر',
+    revenue: 'الإيرادات',
+    monthlyTrend: 'الاتجاه الشهري',
+    expenseBreakdown: 'توزيع المصاريف',
+    topItems: 'أفضل العناصر',
+    pendingCollection: 'مبالغ قيد التحصيل',
+    profitMargin: 'هامش الربح'
   }
 };
 
