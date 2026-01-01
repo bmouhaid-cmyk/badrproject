@@ -1195,8 +1195,11 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               const totalQty = currentQty + newQty;
               const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
 
-              await supabase.from('inventory').update({ quantity: totalQty, buy_price: newBuyPrice }).eq('id', formData.itemId);
-              setInventory(prev => prev.map(i => i.id === formData.itemId ? { ...i, quantity: totalQty, buy_price: newBuyPrice } : i));
+              const currentInitial = parseInt(item.initial_quantity || item.quantity);
+              const newInitial = currentInitial + newQty;
+
+              await supabase.from('inventory').update({ quantity: totalQty, buy_price: newBuyPrice, initial_quantity: newInitial }).eq('id', formData.itemId);
+              setInventory(prev => prev.map(i => i.id === formData.itemId ? { ...i, quantity: totalQty, buy_price: newBuyPrice, initial_quantity: newInitial } : i));
             }
           }
         }
@@ -1227,10 +1230,39 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
   const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
+      // 1. Fetch transaction details before deleting
+      const { data: transaction } = await supabase.from('transactions').select('*').eq('id', id).single();
+
       const { error } = await supabase.from('transactions').delete().eq('id', id);
       if (!error) {
         setTransactions(prev => prev.filter(t => t.id !== id));
-        // Also update inventory if needed (revert stock changes) - simplified for now, assuming manual correction
+
+        // 2. Revert Inventory Logic
+        if (transaction && transaction.item_id && transaction.status !== 'refused') {
+          const qty = parseInt(transaction.quantity || 0);
+          const { data: item } = await supabase.from('inventory').select('*').eq('id', transaction.item_id).single();
+
+          if (item) {
+            let updates = {};
+            let newQty = parseInt(item.quantity);
+
+            if (transaction.type === 'sale') {
+              // Sale deleted -> Add back stock
+              newQty += qty;
+              updates.quantity = newQty;
+            } else if (transaction.type === 'purchase') {
+              // Purchase deleted -> Remove stock, Remove history
+              newQty -= qty;
+              updates.quantity = newQty;
+              updates.initial_quantity = Math.max(0, parseInt(item.initial_quantity || item.quantity) - qty);
+            }
+
+            if (Object.keys(updates).length > 0) {
+              await supabase.from('inventory').update(updates).eq('id', item.id);
+              setInventory(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
+            }
+          }
+        }
       } else {
         alert('Error deleting transaction: ' + error.message);
       }
@@ -1302,9 +1334,23 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
         if (qtyChange !== 0) {
           const newQty = parseInt(item.quantity) + qtyChange;
-          await supabase.from('inventory').update({ quantity: newQty }).eq('id', item.id);
+          const updates = { quantity: newQty };
+
+          // Update initial_quantity for Purchase status changes
+          if (transaction.type === 'purchase') {
+            const currentInitial = parseInt(item.initial_quantity || item.quantity);
+            if (oldStatus !== 'refused' && newStatus === 'refused') {
+              // Refusing a purchase -> Remove from history
+              updates.initial_quantity = Math.max(0, currentInitial - qty);
+            } else if (oldStatus === 'refused' && newStatus !== 'refused') {
+              // Un-refusing a purchase -> Add to history
+              updates.initial_quantity = currentInitial + qty;
+            }
+          }
+
+          await supabase.from('inventory').update(updates).eq('id', item.id);
           // Update local inventory
-          setInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: newQty } : i));
+          setInventory(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
         }
       }
     }
@@ -1859,6 +1905,7 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
       'Buy Price': item.buy_price,
       'Sell Price': item.sell_price,
       Quantity: item.quantity,
+      'Initial Quantity': item.initial_quantity || item.quantity,
       'Low Stock Threshold': item.low_stock_threshold,
       'Total Value': item.buy_price * item.quantity
     }));
@@ -1880,7 +1927,8 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
         quantity: parseInt(formData.quantity) || 0,
         buy_price: parseFloat(formData.buyPrice) || 0,
         sell_price: parseFloat(formData.sellPrice) || 0,
-        low_stock_threshold: parseInt(formData.lowStockThreshold) || 0
+        low_stock_threshold: parseInt(formData.lowStockThreshold) || 0,
+        initial_quantity: parseInt(formData.quantity) || 0
       };
 
       let error = null;
@@ -2127,7 +2175,7 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('supplier')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('quantity')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('quantity')} (Cur/Init)</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('buyPrice')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('sellPrice')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('inventoryValue')}</th>
@@ -2152,7 +2200,7 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
                     <div className="text-sm text-gray-500">{item.supplier || '-'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.quantity}
+                    {item.quantity} / {item.initial_quantity || item.quantity}
                     {parseInt(item.quantity) <= parseInt(item.low_stock_threshold) && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
                         {t('lowStock')}
