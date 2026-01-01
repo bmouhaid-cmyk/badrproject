@@ -124,7 +124,10 @@ const translations = {
     expenseBreakdown: 'Expense Breakdown',
     topItems: 'Top Items',
     pendingCollection: 'Pending Collection',
-    profitMargin: 'Profit Margin'
+    profitMargin: 'Profit Margin',
+    history: 'History',
+    inventoryHistory: 'Inventory History',
+    supplierPayments: 'Supplier Payments'
   },
   fr: {
     dashboard: 'Tableau de bord',
@@ -221,7 +224,16 @@ const translations = {
     incomeVsExpenses: 'Revenus vs Dépenses',
     profit: 'Bénéfice',
     selectedSummary: 'Résumé de la sélection',
-    items: 'éléments'
+    items: 'éléments',
+    revenue: 'Revenue',
+    monthlyTrend: 'Monthly Trend',
+    expenseBreakdown: 'Expense Breakdown',
+    topItems: 'Top Items',
+    pendingCollection: 'Pending Collection',
+    profitMargin: 'Profit Margin',
+    history: 'Historique',
+    inventoryHistory: 'Historique Stock',
+    supplierPayments: 'Paiements Fournisseurs'
   },
   ar: {
     dashboard: 'لوحة القيادة',
@@ -323,7 +335,10 @@ const translations = {
     expenseBreakdown: 'توزيع المصاريف',
     topItems: 'أفضل العناصر',
     pendingCollection: 'مبالغ قيد التحصيل',
-    profitMargin: 'هامش الربح'
+    profitMargin: 'هامش الربح',
+    history: 'السجل',
+    inventoryHistory: 'سجل المخزون',
+    supplierPayments: 'مدفوعات الموردين'
   }
 };
 
@@ -702,6 +717,7 @@ function App() {
           <NavItem id="dashboard" icon={LayoutDashboard} label={t('dashboard')} />
           <NavItem id="transactions" icon={ArrowRightLeft} label={t('transactions')} />
           <NavItem id="inventory" icon={Package} label={t('inventory')} />
+          <NavItem id="history" icon={FileText} label={t('history')} />
           <NavItem id="suppliers" icon={Truck} label={t('suppliers')} />
           {currentUser.role === 'admin' && (
             <>
@@ -826,6 +842,14 @@ function App() {
               suppliers={suppliers}
               setSuppliers={setSuppliers}
               transactions={transactions}
+              t={t}
+            />
+          )}
+
+          {view === 'history' && (
+            <HistoryView
+              transactions={transactions}
+              inventory={inventory}
               t={t}
             />
           )}
@@ -2543,6 +2567,102 @@ const ReportView = ({ transactions, inventory, t }) => {
   );
 };
 
+const HistoryView = ({ transactions, inventory, t }) => {
+  const [activeTab, setActiveTab] = useState('inventoryHistory'); // 'inventoryHistory' or 'supplierPayments'
+
+  const purchases = transactions.filter(t => t.type === 'purchase');
+
+  return (
+    <div className="space-y-6">
+      <div className="flex space-x-4 border-b border-gray-200">
+        <button
+          className={`py-2 px-4 font-medium text-sm focus:outline-none ${activeTab === 'inventoryHistory' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('inventoryHistory')}
+        >
+          {t('inventoryHistory')}
+        </button>
+        <button
+          className={`py-2 px-4 font-medium text-sm focus:outline-none ${activeTab === 'supplierPayments' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('supplierPayments')}
+        >
+          {t('supplierPayments')}
+        </button>
+      </div>
+
+      {activeTab === 'inventoryHistory' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('date')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('item')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('supplier')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('quantity')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('cost')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {purchases.map(tItem => (
+                  <tr key={tItem.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {tItem.item_id ? (inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item') : tItem.category}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.party}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.quantity}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatCurrency(tItem.amount)}</td>
+                  </tr>
+                ))}
+                {purchases.length === 0 && (
+                  <tr><td colSpan="5" className="px-6 py-12 text-center text-sm text-gray-500">{t('noTransactions')}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'supplierPayments' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('date')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('supplier')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('amount')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('status')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {purchases.map(tItem => (
+                  <tr key={tItem.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(tItem.amount)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                        ${tItem.status === 'completed' ? 'bg-green-100 text-green-800' :
+                          tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
+                            'bg-yellow-100 text-yellow-800'
+                        }`}>
+                        {t(tItem.status || 'pending')}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {purchases.length === 0 && (
+                  <tr><td colSpan="4" className="px-6 py-12 text-center text-sm text-gray-500">{t('noTransactions')}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const SupplierManager = ({ suppliers, setSuppliers, transactions, t }) => {
   const [newSupplier, setNewSupplier] = useState({ name: '', contact: '' });
