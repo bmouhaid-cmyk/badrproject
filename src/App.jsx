@@ -1497,6 +1497,23 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               <option value="refused">{t('refused')}</option>
             </select>
 
+            <select
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+              value={`${sortConfig.key}-${sortConfig.direction}`}
+              onChange={e => {
+                const [key, direction] = e.target.value.split('-');
+                setSortConfig({ key, direction });
+              }}
+            >
+              <option value="date-desc">{t('date')} ({t('newest') || 'Newest'})</option>
+              <option value="date-asc">{t('date')} ({t('oldest') || 'Oldest'})</option>
+              <option value="status-asc">{t('status')}</option>
+              <option value="party-asc">{t('client')}/{t('supplier')} (A-Z)</option>
+              <option value="item-asc">{t('item')} (A-Z)</option>
+              <option value="amount-desc">{t('amount')} ({t('highest') || 'Highest'})</option>
+              <option value="amount-asc">{t('amount')} ({t('lowest') || 'Lowest'})</option>
+            </select>
+
             <input
               type="text"
               placeholder={t('client') + '/' + t('supplier')}
