@@ -832,6 +832,8 @@ function App() {
             <InventoryManager
               inventory={inventory}
               setInventory={setInventory}
+              transactions={transactions}
+              setTransactions={setTransactions}
               suppliers={suppliers}
               t={t}
             />
@@ -1255,20 +1257,27 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
       // 1. Fetch transaction details before deleting
-      const { data: transaction } = await supabase.from('transactions').select('*').eq('id', id).single();
+      const { data: transaction, error: fetchError } = await supabase.from('transactions').select('*').eq('id', id).single();
+
+      if (fetchError) {
+        alert('Error fetching transaction details: ' + fetchError.message);
+        return;
+      }
 
       const { error } = await supabase.from('transactions').delete().eq('id', id);
       if (!error) {
         setTransactions(prev => prev.filter(t => t.id !== id));
 
         // 2. Revert Inventory Logic
+        // Ensure we parse quantity correctly as integer
         if (transaction && transaction.item_id && transaction.status !== 'refused') {
           const qty = parseInt(transaction.quantity || 0);
-          const { data: item } = await supabase.from('inventory').select('*').eq('id', transaction.item_id).single();
+          // Use maybeSingle() in case item was deleted or issue exists
+          const { data: item } = await supabase.from('inventory').select('*').eq('id', transaction.item_id).maybeSingle();
 
           if (item) {
             let updates = {};
-            let newQty = parseInt(item.quantity);
+            let newQty = parseInt(item.quantity || 0);
 
             if (transaction.type === 'sale') {
               // Sale deleted -> Add back stock
@@ -1276,14 +1285,20 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               updates.quantity = newQty;
             } else if (transaction.type === 'purchase') {
               // Purchase deleted -> Remove stock, Remove history
-              newQty -= qty;
+              newQty = Math.max(0, newQty - qty); // Prevent negative
               updates.quantity = newQty;
-              updates.initial_quantity = Math.max(0, parseInt(item.initial_quantity || item.quantity) - qty);
+              const currentInitial = parseInt(item.initial_quantity || item.quantity || 0);
+              updates.initial_quantity = Math.max(0, currentInitial - qty);
             }
 
             if (Object.keys(updates).length > 0) {
-              await supabase.from('inventory').update(updates).eq('id', item.id);
-              setInventory(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
+              const { error: updateError } = await supabase.from('inventory').update(updates).eq('id', item.id);
+              if (!updateError) {
+                setInventory(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
+              } else {
+                console.error("Failed to revert inventory:", updateError);
+                alert("Warning: Transaction deleted but inventory update failed.");
+              }
             }
           }
         }
@@ -1909,7 +1924,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   );
 };
 
-const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
+const InventoryManager = ({ inventory, setInventory, transactions, setTransactions, suppliers, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -1966,7 +1981,28 @@ const InventoryManager = ({ inventory, setInventory, suppliers, t }) => {
         const { data, error: insertError } = await supabase.from('inventory').insert([dbItem]).select();
         error = insertError;
         if (!error && data) {
-          setInventory(prev => [...prev, data[0]]);
+          const newResult = data[0];
+          setInventory(prev => [...prev, newResult]);
+
+          // Create initial history transaction if quantity > 0
+          if (parseInt(dbItem.quantity) > 0) {
+            const transaction = {
+              date: new Date().toISOString().split('T')[0],
+              type: 'purchase',
+              status: 'completed',
+              category: 'Initial Stock',
+              party: dbItem.supplier || 'Initial Stock',
+              item_id: newResult.id,
+              quantity: parseInt(dbItem.quantity),
+              amount: (parseFloat(dbItem.buy_price) || 0) * parseInt(dbItem.quantity),
+              notes: 'Initial inventory creation'
+            };
+            const { data: txData, error: txError } = await supabase.from('transactions').insert([transaction]).select();
+            if (txData) {
+              // Use setTransactions from props
+              setTransactions(prev => [txData[0], ...prev]);
+            }
+          }
         }
       }
 
