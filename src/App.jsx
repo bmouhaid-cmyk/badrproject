@@ -592,8 +592,8 @@ function App() {
     // Real-time subscriptions
     const invSub = supabase.channel('inventory').on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, payload => {
       if (payload.eventType === 'INSERT') setInventory(prev => [...prev, payload.new]);
-      if (payload.eventType === 'UPDATE') setInventory(prev => prev.map(i => i.id === payload.new.id ? payload.new : i));
-      if (payload.eventType === 'DELETE') setInventory(prev => prev.filter(i => i.id !== payload.old.id));
+      if (payload.eventType === 'UPDATE') setInventory(prev => prev.map(i => String(i.id) === String(payload.new.id) ? payload.new : i));
+      if (payload.eventType === 'DELETE') setInventory(prev => prev.filter(i => String(i.id) !== String(payload.old.id)));
     }).subscribe();
 
     const txSub = supabase.channel('transactions').on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, payload => {
@@ -1292,13 +1292,17 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
             }
 
             if (Object.keys(updates).length > 0) {
-              const { error: updateError } = await supabase.from('inventory').update(updates).eq('id', item.id);
-              if (!updateError) {
-                // Use robust ID comparison
-                setInventory(prev => prev.map(i => String(i.id) === String(item.id) ? { ...i, ...updates } : i));
+              // Vital Fix: Select data back from update to ensure we have the DB truth
+              const { data: updatedItem, error: updateError } = await supabase.from('inventory').update(updates).eq('id', item.id).select().single();
+
+              if (!updateError && updatedItem) {
+                // Force update local state with exactly what is in DB
+                setInventory(prev => prev.map(i => String(i.id) === String(updatedItem.id) ? updatedItem : i));
               } else {
                 console.error("Failed to revert inventory:", updateError);
-                alert("Warning: Transaction deleted but inventory update failed.");
+                // Fallback: Re-fetch entire inventory if single update fails to return (nuclear safety)
+                const { data: fullInv } = await supabase.from('inventory').select('*').eq('is_deleted', false);
+                if (fullInv) setInventory(fullInv);
               }
             }
           }
