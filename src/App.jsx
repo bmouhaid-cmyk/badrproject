@@ -1294,7 +1294,8 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
             if (Object.keys(updates).length > 0) {
               const { error: updateError } = await supabase.from('inventory').update(updates).eq('id', item.id);
               if (!updateError) {
-                setInventory(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
+                // Use robust ID comparison
+                setInventory(prev => prev.map(i => String(i.id) === String(item.id) ? { ...i, ...updates } : i));
               } else {
                 console.error("Failed to revert inventory:", updateError);
                 alert("Warning: Transaction deleted but inventory update failed.");
@@ -1976,6 +1977,28 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
         error = updateError;
         if (!error) {
           setInventory(prev => prev.map(item => item.id === formData.id ? { ...item, ...dbItem } : item));
+
+          // Sync supplier change to Initial History Transaction if applicable
+          if (formData.supplier) {
+            const { data: relatedTxs, error: txFetchError } = await supabase
+              .from('transactions')
+              .select('*')
+              .eq('item_id', formData.id)
+              .eq('notes', 'Initial inventory creation'); // Target the specific auto-created one
+
+            if (relatedTxs && relatedTxs.length > 0) {
+              const txToUpdate = relatedTxs[0]; // Assuming only one initial
+              const { error: txUpdateError } = await supabase
+                .from('transactions')
+                .update({ party: formData.supplier })
+                .eq('id', txToUpdate.id);
+
+              if (!txUpdateError) {
+                // Update local transactions
+                setTransactions(prev => prev.map(t => t.id === txToUpdate.id ? { ...t, party: formData.supplier } : t));
+              }
+            }
+          }
         }
       } else {
         const { data, error: insertError } = await supabase.from('inventory').insert([dbItem]).select();
