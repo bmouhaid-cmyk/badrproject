@@ -994,10 +994,13 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
   const [typeFilter, setTypeFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(''); // New Status Filter
   const [partyFilter, setPartyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
   const [deliveryFilter, setDeliveryFilter] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' }); // New Sort State
   const [selectedTransactions, setSelectedTransactions] = useState([]);
+  const [filteredTransactions, setFilteredTransactions] = useState([]);
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -1025,21 +1028,61 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   const categories = [...new Set(transactions.map(t => t.category).filter(Boolean))];
   const deliveryCompanies = [...new Set(transactions.map(t => t.delivery_company).filter(Boolean))];
 
-  const filteredTransactions = transactions.filter(t => {
-    if (dateFilter.start && t.date < dateFilter.start) return false;
-    if (dateFilter.end && t.date > dateFilter.end) return false;
-    if (typeFilter && t.type !== typeFilter) return false;
-    if (partyFilter && !t.party?.toLowerCase().includes(partyFilter.toLowerCase())) return false;
+  useEffect(() => {
+    let result = transactions.filter(t => {
+      const dateMatch = (!dateFilter.start || t.date >= dateFilter.start) &&
+        (!dateFilter.end || t.date <= dateFilter.end);
+      const typeMatch = !typeFilter || t.type === typeFilter;
+      const statusMatch = !statusFilter || t.status === statusFilter; // Apply Status Filter
+      const partyMatch = !partyFilter || (t.party && t.party.toLowerCase().includes(partyFilter.toLowerCase()));
 
-    if (itemFilter) {
-      const itemName = t.item_id ? (inventory.find(i => i.id === t.item_id)?.name || '') : '';
-      if (!itemName.toLowerCase().includes(itemFilter.toLowerCase())) return false;
+      // Improved Item Matching using item_name
+      const itemName = t.item_name || (t.item_id ? (inventory.find(i => i.id === t.item_id)?.name || '') : '');
+      const itemMatch = !itemFilter ||
+        (itemName && itemName.toLowerCase().includes(itemFilter.toLowerCase())) ||
+        (t.category && t.category.toLowerCase().includes(itemFilter.toLowerCase()));
+
+      const deliveryMatch = !deliveryFilter || (t.delivery_company === deliveryFilter);
+
+      return dateMatch && typeMatch && statusMatch && partyMatch && itemMatch && deliveryMatch;
+    });
+
+    // Sorting Logic
+    if (sortConfig.key) {
+      result.sort((a, b) => {
+        let aValue = a[sortConfig.key];
+        let bValue = b[sortConfig.key];
+
+        // Specific handling for 'item' key to sort by name
+        if (sortConfig.key === 'item') {
+          aValue = a.item_name || (a.item_id ? (inventory.find(i => i.id === a.item_id)?.name || '') : a.category) || '';
+          bValue = b.item_name || (b.item_id ? (inventory.find(i => i.id === b.item_id)?.name || '') : b.category) || '';
+        }
+
+        // Handle nulls
+        if (aValue === null || aValue === undefined) aValue = '';
+        if (bValue === null || bValue === undefined) bValue = '';
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
     }
 
-    if (deliveryFilter && t.delivery_company !== deliveryFilter) return false;
+    setFilteredTransactions(result);
+  }, [transactions, dateFilter, typeFilter, statusFilter, partyFilter, itemFilter, deliveryFilter, sortConfig, inventory]);
 
-    return true;
-  });
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const handleExport = () => {
     const data = filteredTransactions.map(t => ({
@@ -1112,13 +1155,20 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     e.preventDefault();
 
     const newTransaction = {
-      ...formData,
-      amount: parseFloat(formData.amount) * (formData.quantity || 1),
-      delivery_cost: parseFloat(formData.deliveryCost) || 0,
-      packaging_cost: parseFloat(formData.packagingCost) || 0,
+      date: formData.date,
+      type: formData.type,
+      status: formData.status,
+      category: formData.type === 'expense' ? formData.category : null,
+      party: formData.party,
+      item_id: formData.type !== 'expense' ? formData.itemId : null,
+      item_name: formData.type !== 'expense' ? (inventory.find(i => i.id === formData.itemId)?.name || '') : null,
+      quantity: formData.type !== 'expense' ? parseInt(formData.quantity) : null,
+      amount: parseFloat(formData.amount) * (formData.type !== 'expense' ? (formData.quantity || 1) : 1),
+      notes: formData.notes,
+      delivery_cost: formData.type === 'sale' ? (parseFloat(formData.deliveryCost) || 0) : 0,
+      packaging_cost: formData.type === 'sale' ? (parseFloat(formData.packagingCost) || 0) : 0,
       phone: formData.phone,
-      address: formData.address,
-      item_id: formData.itemId || null
+      address: formData.address
     };
 
     const dbTransaction = {
@@ -1436,6 +1486,17 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               <option value="expense">{t('expense')}</option>
             </select>
 
+            <select
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+            >
+              <option value="">{t('allStatuses') || 'All Statuses'}</option>
+              <option value="pending">{t('pending')}</option>
+              <option value="completed">{t('completed')}</option>
+              <option value="refused">{t('refused')}</option>
+            </select>
+
             <input
               type="text"
               placeholder={t('client') + '/' + t('supplier')}
@@ -1468,6 +1529,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 onClick={() => {
                   setDateFilter({ start: '', end: '' });
                   setTypeFilter('');
+                  setStatusFilter('');
                   setPartyFilter('');
                   setItemFilter('');
                   setDeliveryFilter('');
@@ -1845,13 +1907,43 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     onChange={toggleSelectAll}
                   />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('date')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('type')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('status')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('client')}/{t('supplier')}</th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('date')}
+                >
+                  {t('date')} {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('type')}
+                >
+                  {t('type')} {sortConfig.key === 'type' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('status')}
+                >
+                  {t('status')} {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('party')}
+                >
+                  {t('client')}/{t('supplier')} {sortConfig.key === 'party' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('deliveryCompany')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('amount')}</th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('item')}
+                >
+                  {t('item')} {sortConfig.key === 'item' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('amount')}
+                >
+                  {t('amount')} {sortConfig.key === 'amount' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('actions')}</th>
               </tr>
             </thead>
@@ -2020,6 +2112,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
               category: 'Initial Stock',
               party: dbItem.supplier || 'Initial Stock',
               item_id: newResult.id,
+              item_name: newResult.name,
               quantity: parseInt(dbItem.quantity),
               amount: (parseFloat(dbItem.buy_price) || 0) * parseInt(dbItem.quantity),
               notes: 'Initial inventory creation'
