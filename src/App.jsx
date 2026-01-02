@@ -1298,635 +1298,648 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               if (!updateError && updatedItem) {
                 // Force update local state with exactly what is in DB
                 setInventory(prev => prev.map(i => String(i.id) === String(updatedItem.id) ? updatedItem : i));
+
+                // Debug Alert
+                alert(`Debug: Stock successfully restored to ${updatedItem.quantity}.`);
               } else {
                 console.error("Failed to revert inventory:", updateError);
+                alert('Debug Error: Failed to update inventory in DB: ' + (updateError?.message || 'Unknown error'));
+
                 // Fallback: Re-fetch entire inventory if single update fails to return (nuclear safety)
                 const { data: fullInv } = await supabase.from('inventory').select('*').eq('is_deleted', false);
                 if (fullInv) setInventory(fullInv);
               }
+            } else {
+              alert('Debug: No updates needed? Calculated newQty might be same as old?');
             }
+          } else {
+            alert('Debug: Item not found in inventory? ID: ' + transaction.item_id);
           }
+        } else {
+          alert('Debug: Transaction skipped. Status: ' + transaction?.status + ', ItemID: ' + transaction?.item_id);
         }
-      } else {
-        alert('Error deleting transaction: ' + error.message);
       }
+    }
+  } else {
+    alert('Error deleting transaction: ' + error.message);
+}
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (window.confirm(t('deleteConfirm'))) {
-      const { error } = await supabase.from('transactions').delete().in('id', selectedTransactions);
-      if (!error) {
-        setTransactions(prev => prev.filter(t => !selectedTransactions.includes(t.id)));
-        setSelectedTransactions([]);
-      } else {
-        alert('Error deleting transactions: ' + error.message);
-      }
-    }
-  };
-
-  const toggleSelectAll = (e) => {
-    if (e.target.checked) {
-      setSelectedTransactions(filteredTransactions.map(t => t.id));
-    } else {
+const handleBulkDelete = async () => {
+  if (window.confirm(t('deleteConfirm'))) {
+    const { error } = await supabase.from('transactions').delete().in('id', selectedTransactions);
+    if (!error) {
+      setTransactions(prev => prev.filter(t => !selectedTransactions.includes(t.id)));
       setSelectedTransactions([]);
-    }
-  };
-
-  const toggleSelectTransaction = (id) => {
-    if (selectedTransactions.includes(id)) {
-      setSelectedTransactions(prev => prev.filter(t => t !== id));
     } else {
-      setSelectedTransactions(prev => [...prev, id]);
+      alert('Error deleting transactions: ' + error.message);
     }
-  };
+  }
+};
 
-  const handleStatusChange = async (transaction, newStatus) => {
-    const oldStatus = transaction.status;
-    if (oldStatus === newStatus) return;
+const toggleSelectAll = (e) => {
+  if (e.target.checked) {
+    setSelectedTransactions(filteredTransactions.map(t => t.id));
+  } else {
+    setSelectedTransactions([]);
+  }
+};
 
-    // 1. Update Transaction in DB
-    const { error } = await supabase.from('transactions').update({ status: newStatus }).eq('id', transaction.id);
-    if (error) {
-      alert('Error updating status: ' + error.message);
-      return;
-    }
+const toggleSelectTransaction = (id) => {
+  if (selectedTransactions.includes(id)) {
+    setSelectedTransactions(prev => prev.filter(t => t !== id));
+  } else {
+    setSelectedTransactions(prev => [...prev, id]);
+  }
+};
 
-    // 2. Update Inventory (if applicable)
-    if (transaction.item_id) {
-      const item = inventory.find(i => i.id === transaction.item_id);
-      if (item) {
-        let qtyChange = 0;
-        const qty = parseInt(transaction.quantity || 0);
+const handleStatusChange = async (transaction, newStatus) => {
+  const oldStatus = transaction.status;
+  if (oldStatus === newStatus) return;
 
-        // Case A: Was Active (Pending/Completed) -> Becomes Refused (Inactive)
-        // Action: Add back to stock (Revert)
-        if (oldStatus !== 'refused' && newStatus === 'refused') {
-          if (transaction.type === 'sale') qtyChange = qty; // Add back
-          else if (transaction.type === 'purchase') qtyChange = -qty; // Remove (un-buy)
-        }
+  // 1. Update Transaction in DB
+  const { error } = await supabase.from('transactions').update({ status: newStatus }).eq('id', transaction.id);
+  if (error) {
+    alert('Error updating status: ' + error.message);
+    return;
+  }
 
-        // Case B: Was Refused (Inactive) -> Becomes Active (Pending/Completed)
-        // Action: Deduct from stock (Apply)
-        else if (oldStatus === 'refused' && newStatus !== 'refused') {
-          if (transaction.type === 'sale') qtyChange = -qty; // Deduct
-          else if (transaction.type === 'purchase') qtyChange = qty; // Add (buy)
-        }
+  // 2. Update Inventory (if applicable)
+  if (transaction.item_id) {
+    const item = inventory.find(i => i.id === transaction.item_id);
+    if (item) {
+      let qtyChange = 0;
+      const qty = parseInt(transaction.quantity || 0);
 
-        // Case C: Pending <-> Completed
-        // Action: No inventory change (both are considered "committed" for stock, just different for income)
+      // Case A: Was Active (Pending/Completed) -> Becomes Refused (Inactive)
+      // Action: Add back to stock (Revert)
+      if (oldStatus !== 'refused' && newStatus === 'refused') {
+        if (transaction.type === 'sale') qtyChange = qty; // Add back
+        else if (transaction.type === 'purchase') qtyChange = -qty; // Remove (un-buy)
+      }
 
-        if (qtyChange !== 0) {
-          const newQty = parseInt(item.quantity) + qtyChange;
-          const updates = { quantity: newQty };
+      // Case B: Was Refused (Inactive) -> Becomes Active (Pending/Completed)
+      // Action: Deduct from stock (Apply)
+      else if (oldStatus === 'refused' && newStatus !== 'refused') {
+        if (transaction.type === 'sale') qtyChange = -qty; // Deduct
+        else if (transaction.type === 'purchase') qtyChange = qty; // Add (buy)
+      }
 
-          // Update initial_quantity for Purchase status changes
-          if (transaction.type === 'purchase') {
-            const currentInitial = parseInt(item.initial_quantity || item.quantity);
-            if (oldStatus !== 'refused' && newStatus === 'refused') {
-              // Refusing a purchase -> Remove from history
-              updates.initial_quantity = Math.max(0, currentInitial - qty);
-            } else if (oldStatus === 'refused' && newStatus !== 'refused') {
-              // Un-refusing a purchase -> Add to history
-              updates.initial_quantity = currentInitial + qty;
-            }
+      // Case C: Pending <-> Completed
+      // Action: No inventory change (both are considered "committed" for stock, just different for income)
+
+      if (qtyChange !== 0) {
+        const newQty = parseInt(item.quantity) + qtyChange;
+        const updates = { quantity: newQty };
+
+        // Update initial_quantity for Purchase status changes
+        if (transaction.type === 'purchase') {
+          const currentInitial = parseInt(item.initial_quantity || item.quantity);
+          if (oldStatus !== 'refused' && newStatus === 'refused') {
+            // Refusing a purchase -> Remove from history
+            updates.initial_quantity = Math.max(0, currentInitial - qty);
+          } else if (oldStatus === 'refused' && newStatus !== 'refused') {
+            // Un-refusing a purchase -> Add to history
+            updates.initial_quantity = currentInitial + qty;
           }
-
-          await supabase.from('inventory').update(updates).eq('id', item.id);
-          // Update local inventory
-          setInventory(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
         }
+
+        await supabase.from('inventory').update(updates).eq('id', item.id);
+        // Update local inventory
+        setInventory(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
       }
     }
+  }
 
-    // 3. Update Local Transaction State
-    setTransactions(prev => prev.map(t => t.id === transaction.id ? { ...t, status: newStatus } : t));
-  };
+  // 3. Update Local Transaction State
+  setTransactions(prev => prev.map(t => t.id === transaction.id ? { ...t, status: newStatus } : t));
+};
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <h3 className="text-xl font-bold text-gray-800">{t('transactions')}</h3>
+return (
+  <div className="space-y-6">
+    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      <h3 className="text-xl font-bold text-gray-800">{t('transactions')}</h3>
 
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            <span className="text-sm text-gray-500">{t('filter')}:</span>
-            <input
-              type="date"
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
-              value={dateFilter.start}
-              onChange={e => setDateFilter({ ...dateFilter, start: e.target.value })}
-            />
-            <span className="text-gray-400">-</span>
-            <input
-              type="date"
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
-              value={dateFilter.end}
-              onChange={e => setDateFilter({ ...dateFilter, end: e.target.value })}
-            />
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <span className="text-sm text-gray-500">{t('filter')}:</span>
+          <input
+            type="date"
+            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+            value={dateFilter.start}
+            onChange={e => setDateFilter({ ...dateFilter, start: e.target.value })}
+          />
+          <span className="text-gray-400">-</span>
+          <input
+            type="date"
+            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+            value={dateFilter.end}
+            onChange={e => setDateFilter({ ...dateFilter, end: e.target.value })}
+          />
 
-            <select
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
-              value={typeFilter}
-              onChange={e => setTypeFilter(e.target.value)}
-            >
-              <option value="">{t('allTypes')}</option>
-              <option value="sale">{t('sale')}</option>
-              <option value="purchase">{t('purchase')}</option>
-              <option value="expense">{t('expense')}</option>
-            </select>
+          <select
+            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+          >
+            <option value="">{t('allTypes')}</option>
+            <option value="sale">{t('sale')}</option>
+            <option value="purchase">{t('purchase')}</option>
+            <option value="expense">{t('expense')}</option>
+          </select>
 
-            <input
-              type="text"
-              placeholder={t('client') + '/' + t('supplier')}
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm w-32"
-              value={partyFilter}
-              onChange={e => setPartyFilter(e.target.value)}
-            />
+          <input
+            type="text"
+            placeholder={t('client') + '/' + t('supplier')}
+            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm w-32"
+            value={partyFilter}
+            onChange={e => setPartyFilter(e.target.value)}
+          />
 
-            <input
-              type="text"
-              placeholder={t('item')}
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm w-32"
-              value={itemFilter}
-              onChange={e => setItemFilter(e.target.value)}
-            />
+          <input
+            type="text"
+            placeholder={t('item')}
+            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm w-32"
+            value={itemFilter}
+            onChange={e => setItemFilter(e.target.value)}
+          />
 
-            <select
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
-              value={deliveryFilter}
-              onChange={e => setDeliveryFilter(e.target.value)}
-            >
-              <option value="">{t('deliveryCompany')}</option>
-              {deliveryCompanies.map((c, i) => (
-                <option key={i} value={c}>{c}</option>
-              ))}
-            </select>
+          <select
+            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+            value={deliveryFilter}
+            onChange={e => setDeliveryFilter(e.target.value)}
+          >
+            <option value="">{t('deliveryCompany')}</option>
+            {deliveryCompanies.map((c, i) => (
+              <option key={i} value={c}>{c}</option>
+            ))}
+          </select>
 
-            {(dateFilter.start || dateFilter.end || typeFilter || partyFilter || itemFilter || deliveryFilter) && (
-              <button
-                onClick={() => {
-                  setDateFilter({ start: '', end: '' });
-                  setTypeFilter('');
-                  setPartyFilter('');
-                  setItemFilter('');
-                  setDeliveryFilter('');
-                }}
-                className="text-sm text-red-600 hover:text-red-800"
-              >
-                {t('clearFilters')}
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {selectedTransactions.length > 0 && (
-              <button
-                onClick={handleBulkDelete}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-red-700"
-              >
-                <Trash2 size={20} />
-                <span>{t('deleteSelected')} ({selectedTransactions.length})</span>
-              </button>
-            )}
+          {(dateFilter.start || dateFilter.end || typeFilter || partyFilter || itemFilter || deliveryFilter) && (
             <button
-              onClick={handleExport}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700"
+              onClick={() => {
+                setDateFilter({ start: '', end: '' });
+                setTypeFilter('');
+                setPartyFilter('');
+                setItemFilter('');
+                setDeliveryFilter('');
+              }}
+              className="text-sm text-red-600 hover:text-red-800"
             >
-              <Download size={20} />
-              <span>{t('exportExcel')}</span>
+              {t('clearFilters')}
             </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {selectedTransactions.length > 0 && (
             <button
-              onClick={() => setShowForm(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
+              onClick={handleBulkDelete}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-red-700"
             >
-              <Plus size={20} />
-              <span>{t('newTransaction')}</span>
+              <Trash2 size={20} />
+              <span>{t('deleteSelected')} ({selectedTransactions.length})</span>
             </button>
-          </div>
+          )}
+          <button
+            onClick={handleExport}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700"
+          >
+            <Download size={20} />
+            <span>{t('exportExcel')}</span>
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
+          >
+            <Plus size={20} />
+            <span>{t('newTransaction')}</span>
+          </button>
         </div>
       </div>
+    </div>
 
-      {selectedTransactions.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-          <h4 className="text-blue-800 font-semibold mb-2">{t('selectedSummary')} ({selectedTransactions.length} {t('items')})</h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {(() => {
-              const selectedTxs = transactions.filter(t => selectedTransactions.includes(t.id) && t.status !== 'refused');
+    {selectedTransactions.length > 0 && (
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+        <h4 className="text-blue-800 font-semibold mb-2">{t('selectedSummary')} ({selectedTransactions.length} {t('items')})</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {(() => {
+            const selectedTxs = transactions.filter(t => selectedTransactions.includes(t.id) && t.status !== 'refused');
 
-              const income = selectedTxs
-                .filter(t => t.type === 'sale')
-                .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
+            const income = selectedTxs
+              .filter(t => t.type === 'sale')
+              .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
 
-              const expenses = selectedTxs
-                .reduce((acc, curr) => {
-                  if (curr.type === 'expense' || curr.type === 'purchase') return acc + parseFloat(curr.amount || 0);
-                  return acc;
-                }, 0);
+            const expenses = selectedTxs
+              .reduce((acc, curr) => {
+                if (curr.type === 'expense' || curr.type === 'purchase') return acc + parseFloat(curr.amount || 0);
+                return acc;
+              }, 0);
 
-              // Operating expenses for sales (delivery + packaging)
-              const salesOpEx = selectedTxs
-                .filter(t => t.type === 'sale')
-                .reduce((acc, curr) => acc + parseFloat(curr.delivery_cost || 0) + parseFloat(curr.packaging_cost || 0), 0);
+            // Operating expenses for sales (delivery + packaging)
+            const salesOpEx = selectedTxs
+              .filter(t => t.type === 'sale')
+              .reduce((acc, curr) => acc + parseFloat(curr.delivery_cost || 0) + parseFloat(curr.packaging_cost || 0), 0);
 
-              const cogs = selectedTxs
-                .filter(t => t.type === 'sale')
-                .reduce((acc, curr) => {
-                  const item = inventory.find(i => i.id === curr.item_id);
-                  const buyPrice = item ? parseFloat(item.buy_price || 0) : 0;
-                  const quantity = parseInt(curr.quantity || 1);
-                  return acc + (buyPrice * quantity);
-                }, 0);
+            const cogs = selectedTxs
+              .filter(t => t.type === 'sale')
+              .reduce((acc, curr) => {
+                const item = inventory.find(i => i.id === curr.item_id);
+                const buyPrice = item ? parseFloat(item.buy_price || 0) : 0;
+                const quantity = parseInt(curr.quantity || 1);
+                return acc + (buyPrice * quantity);
+              }, 0);
 
-              const totalSelectedExpenses = expenses + salesOpEx; // Pure cash outflow from selection
-              const netProfit = income - (salesOpEx + cogs);
+            const totalSelectedExpenses = expenses + salesOpEx; // Pure cash outflow from selection
+            const netProfit = income - (salesOpEx + cogs);
 
-              return (
-                <>
-                  <div className="bg-white p-3 rounded-lg shadow-sm">
-                    <p className="text-xs text-gray-500 uppercase">{t('totalIncome')}</p>
-                    <p className="text-lg font-bold text-green-600">{formatCurrency(income)}</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg shadow-sm">
-                    <p className="text-xs text-gray-500 uppercase">{t('totalExpenses')}</p>
-                    <p className="text-lg font-bold text-red-600">{formatCurrency(totalSelectedExpenses)}</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg shadow-sm">
-                    <p className="text-xs text-gray-500 uppercase">{t('netProfit')}</p>
-                    <p className={`text-lg font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatCurrency(netProfit)}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">(Income - COGS - OpEx)</p>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
+            return (
+              <>
+                <div className="bg-white p-3 rounded-lg shadow-sm">
+                  <p className="text-xs text-gray-500 uppercase">{t('totalIncome')}</p>
+                  <p className="text-lg font-bold text-green-600">{formatCurrency(income)}</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm">
+                  <p className="text-xs text-gray-500 uppercase">{t('totalExpenses')}</p>
+                  <p className="text-lg font-bold text-red-600">{formatCurrency(totalSelectedExpenses)}</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm">
+                  <p className="text-xs text-gray-500 uppercase">{t('netProfit')}</p>
+                  <p className={`text-lg font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(netProfit)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">(Income - COGS - OpEx)</p>
+                </div>
+              </>
+            );
+          })()}
         </div>
-      )}
+      </div>
+    )}
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <h4 className="text-lg font-bold mb-4 text-gray-800">{t('newTransaction')}</h4>
-            <form onSubmit={handleSubmit} className="space-y-4">
+    {showForm && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <h4 className="text-lg font-bold mb-4 text-gray-800">{t('newTransaction')}</h4>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('date')}</label>
+                <input
+                  type="date"
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                  value={formData.date}
+                  onChange={e => setFormData({ ...formData, date: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('type')}</label>
+                <div className="flex space-x-2">
+                  <select
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                    value={formData.type}
+                    onChange={e => handleTypeChange(e.target.value)}
+                  >
+                    <option value="sale">{t('sale')}</option>
+                    <option value="purchase">{t('purchase')}</option>
+                    <option value="expense">{t('expense')}</option>
+                  </select>
+                  <select
+                    className={`mt-1 block w-full rounded-md border shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-white font-medium
+                        ${formData.status === 'pending' ? 'bg-yellow-500 border-yellow-600' :
+                        formData.status === 'completed' ? 'bg-green-600 border-green-700' :
+                          'bg-red-600 border-red-700'
+                      }`}
+                    value={formData.status}
+                    onChange={e => setFormData({ ...formData, status: e.target.value })}
+                  >
+                    <option value="pending" className="bg-white text-gray-900">{t('pending')}</option>
+                    <option value="completed" className="bg-white text-gray-900">{t('completed')}</option>
+                    <option value="refused" className="bg-white text-gray-900">{t('refused')}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {formData.type !== 'expense' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('item')}</label>
+                <select
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                  value={formData.itemId}
+                  onChange={e => handleItemChange(e.target.value)}
+                  required={formData.type !== 'expense'}
+                >
+                  <option value="">{t('item')}</option>
+                  {inventory.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} {item.supplier ? `- ${item.supplier}` : ''} (Stock: {item.quantity}) - {t('buyPrice')}: {formatCurrency(item.buy_price)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                {formData.type === 'sale' ? t('client') : t('supplier')}
+              </label>
+              <input
+                type="text"
+                list="parties"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                value={formData.party}
+                onChange={e => {
+                  const val = e.target.value;
+                  let updates = { party: val };
+
+                  // Auto-fill phone if supplier exists
+                  if (formData.type === 'purchase') {
+                    const supplier = suppliers.find(s => s.name === val);
+                    if (supplier && supplier.contact) {
+                      updates.phone = supplier.contact;
+                    }
+                  }
+                  setFormData({ ...formData, ...updates });
+                }}
+              />
+              <datalist id="parties">
+                {formData.type === 'purchase'
+                  ? suppliers.map(s => <option key={s.id} value={s.name} />)
+                  : parties.map((p, i) => <option key={i} value={p} />)
+                }
+              </datalist>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('phone')}</label>
+                <input
+                  type="text"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                  value={formData.phone}
+                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('address')}</label>
+                <input
+                  type="text"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                  value={formData.address}
+                  onChange={e => setFormData({ ...formData, address: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {formData.type !== 'expense' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">{t('date')}</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('quantity')}</label>
                   <input
-                    type="date"
+                    type="number"
+                    required
+                    min="1"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                    value={formData.quantity}
+                    onChange={e => setFormData({ ...formData, quantity: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">{t('unitPrice')}</label>
+                  <input
+                    type="number"
                     required
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                    value={formData.date}
-                    onChange={e => setFormData({ ...formData, date: e.target.value })}
+                    value={formData.amount}
+                    onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            {formData.type === 'sale' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                {/* Delivery Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">{t('delivery')}</label>
+                  <select
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 mb-2 bg-white text-gray-900"
+                    value={selectedCompany}
+                    onChange={(e) => {
+                      setSelectedCompany(e.target.value);
+                      setFormData({ ...formData, deliveryCost: '' }); // Reset cost when company changes
+                    }}
+                  >
+                    <option value="">{t('addCompany')}</option>
+                    {deliveryConfig.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+
+                  {selectedCompany && (
+                    <select
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                      value={formData.deliveryCost} // This value might be overwritten by manual input, which is fine
+                      onChange={(e) => setFormData({ ...formData, deliveryCost: e.target.value })}
+                    >
+                      <option value="">{t('city')} (Optional)</option>
+                      {deliveryConfig.find(c => c.id === selectedCompany)?.rates.map(r => (
+                        <option key={r.id} value={r.cost}>{r.city} ({formatCurrency(r.cost)})</option>
+                      ))}
+                    </select>
+                  )}
+                  <input
+                    type="number"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                    value={formData.deliveryCost}
+                    onChange={e => setFormData({ ...formData, deliveryCost: e.target.value })}
+                    placeholder="Manual Cost (0.00)"
+                  />
+                </div>
+
+                {/* Packaging Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">{t('packaging')}</label>
+                  <select
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 mb-2"
+                    value={selectedPackaging}
+                    onChange={(e) => {
+                      setSelectedPackaging(e.target.value);
+                      const pkg = packagingConfig.find(p => p.id === e.target.value);
+                      if (pkg) {
+                        setFormData({ ...formData, packagingCost: pkg.cost });
+                      } else {
+                        setFormData({ ...formData, packagingCost: '' });
+                      }
+                    }}
+                  >
+                    <option value="">{t('addOption')}</option>
+                    {packagingConfig.map(p => <option key={p.id} value={p.id}>{p.name} ({formatCurrency(p.cost)})</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                    value={formData.packagingCost}
+                    onChange={e => setFormData({ ...formData, packagingCost: e.target.value })}
+                    placeholder="Manual Cost (0.00)"
+                  />
+                </div>
+              </div>
+            )}
+
+            {formData.type === 'expense' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">{t('amount')}</label>
+                  <input
+                    type="number"
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                    value={formData.amount}
+                    onChange={e => setFormData({ ...formData, amount: e.target.value })}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{t('type')}</label>
-                  <div className="flex space-x-2">
-                    <select
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                      value={formData.type}
-                      onChange={e => handleTypeChange(e.target.value)}
-                    >
-                      <option value="sale">{t('sale')}</option>
-                      <option value="purchase">{t('purchase')}</option>
-                      <option value="expense">{t('expense')}</option>
-                    </select>
-                    <select
-                      className={`mt-1 block w-full rounded-md border shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-white font-medium
-                        ${formData.status === 'pending' ? 'bg-yellow-500 border-yellow-600' :
-                          formData.status === 'completed' ? 'bg-green-600 border-green-700' :
-                            'bg-red-600 border-red-700'
-                        }`}
-                      value={formData.status}
-                      onChange={e => setFormData({ ...formData, status: e.target.value })}
-                    >
-                      <option value="pending" className="bg-white text-gray-900">{t('pending')}</option>
-                      <option value="completed" className="bg-white text-gray-900">{t('completed')}</option>
-                      <option value="refused" className="bg-white text-gray-900">{t('refused')}</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {formData.type !== 'expense' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">{t('item')}</label>
-                  <select
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                    value={formData.itemId}
-                    onChange={e => handleItemChange(e.target.value)}
-                    required={formData.type !== 'expense'}
-                  >
-                    <option value="">{t('item')}</option>
-                    {inventory.map(item => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} {item.supplier ? `- ${item.supplier}` : ''} (Stock: {item.quantity}) - {t('buyPrice')}: {formatCurrency(item.buy_price)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  {formData.type === 'sale' ? t('client') : t('supplier')}
-                </label>
-                <input
-                  type="text"
-                  list="parties"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                  value={formData.party}
-                  onChange={e => {
-                    const val = e.target.value;
-                    let updates = { party: val };
-
-                    // Auto-fill phone if supplier exists
-                    if (formData.type === 'purchase') {
-                      const supplier = suppliers.find(s => s.name === val);
-                      if (supplier && supplier.contact) {
-                        updates.phone = supplier.contact;
-                      }
-                    }
-                    setFormData({ ...formData, ...updates });
-                  }}
-                />
-                <datalist id="parties">
-                  {formData.type === 'purchase'
-                    ? suppliers.map(s => <option key={s.id} value={s.name} />)
-                    : parties.map((p, i) => <option key={i} value={p} />)
-                  }
-                </datalist>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">{t('phone')}</label>
                   <input
                     type="text"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                    value={formData.phone}
-                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                    list="categories"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                    value={formData.category}
+                    onChange={e => setFormData({ ...formData, category: e.target.value })}
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">{t('address')}</label>
-                  <input
-                    type="text"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                    value={formData.address}
-                    onChange={e => setFormData({ ...formData, address: e.target.value })}
-                  />
+                  <datalist id="categories">
+                    {categories.map((c, i) => <option key={i} value={c} />)}
+                  </datalist>
                 </div>
               </div>
+            )}
 
-              {formData.type !== 'expense' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('quantity')}</label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                      value={formData.quantity}
-                      onChange={e => setFormData({ ...formData, quantity: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('unitPrice')}</label>
-                    <input
-                      type="number"
-                      required
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                      value={formData.amount}
-                      onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                    />
-                  </div>
-                </div>
-              )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">{t('notes')}</label>
+              <textarea
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                value={formData.notes}
+                onChange={e => setFormData({ ...formData, notes: e.target.value })}
+              />
+            </div>
 
-              {formData.type === 'sale' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                  {/* Delivery Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('delivery')}</label>
-                    <select
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 mb-2 bg-white text-gray-900"
-                      value={selectedCompany}
-                      onChange={(e) => {
-                        setSelectedCompany(e.target.value);
-                        setFormData({ ...formData, deliveryCost: '' }); // Reset cost when company changes
-                      }}
-                    >
-                      <option value="">{t('addCompany')}</option>
-                      {deliveryConfig.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-
-                    {selectedCompany && (
-                      <select
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                        value={formData.deliveryCost} // This value might be overwritten by manual input, which is fine
-                        onChange={(e) => setFormData({ ...formData, deliveryCost: e.target.value })}
-                      >
-                        <option value="">{t('city')} (Optional)</option>
-                        {deliveryConfig.find(c => c.id === selectedCompany)?.rates.map(r => (
-                          <option key={r.id} value={r.cost}>{r.city} ({formatCurrency(r.cost)})</option>
-                        ))}
-                      </select>
-                    )}
-                    <input
-                      type="number"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                      value={formData.deliveryCost}
-                      onChange={e => setFormData({ ...formData, deliveryCost: e.target.value })}
-                      placeholder="Manual Cost (0.00)"
-                    />
-                  </div>
-
-                  {/* Packaging Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('packaging')}</label>
-                    <select
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 mb-2"
-                      value={selectedPackaging}
-                      onChange={(e) => {
-                        setSelectedPackaging(e.target.value);
-                        const pkg = packagingConfig.find(p => p.id === e.target.value);
-                        if (pkg) {
-                          setFormData({ ...formData, packagingCost: pkg.cost });
-                        } else {
-                          setFormData({ ...formData, packagingCost: '' });
-                        }
-                      }}
-                    >
-                      <option value="">{t('addOption')}</option>
-                      {packagingConfig.map(p => <option key={p.id} value={p.id}>{p.name} ({formatCurrency(p.cost)})</option>)}
-                    </select>
-                    <input
-                      type="number"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                      value={formData.packagingCost}
-                      onChange={e => setFormData({ ...formData, packagingCost: e.target.value })}
-                      placeholder="Manual Cost (0.00)"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {formData.type === 'expense' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('amount')}</label>
-                    <input
-                      type="number"
-                      required
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                      value={formData.amount}
-                      onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('type')}</label>
-                    <input
-                      type="text"
-                      list="categories"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                      value={formData.category}
-                      onChange={e => setFormData({ ...formData, category: e.target.value })}
-                    />
-                    <datalist id="categories">
-                      {categories.map((c, i) => <option key={i} value={c} />)}
-                    </datalist>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">{t('notes')}</label>
-                <textarea
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                  value={formData.notes}
-                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                >
-                  {t('cancel')}
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  {t('save')}
-                </button>
-              </div>
-            </form>
-          </div>
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                {t('save')}
+              </button>
+            </div>
+          </form>
         </div>
-      )}
+      </div>
+    )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  checked={filteredTransactions.length > 0 && selectedTransactions.length === filteredTransactions.length}
+                  onChange={toggleSelectAll}
+                />
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('date')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('type')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('status')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('client')}/{t('supplier')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('deliveryCompany')}</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('amount')}</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('actions')}</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {filteredTransactions.map(tItem => (
+              <tr key={tItem.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap">
                   <input
                     type="checkbox"
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    checked={filteredTransactions.length > 0 && selectedTransactions.length === filteredTransactions.length}
-                    onChange={toggleSelectAll}
+                    checked={selectedTransactions.includes(tItem.id)}
+                    onChange={() => toggleSelectTransaction(tItem.id)}
                   />
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('date')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('type')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('status')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('client')}/{t('supplier')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('deliveryCompany')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('item')}</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('amount')}</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('actions')}</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredTransactions.map(tItem => (
-                <tr key={tItem.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      checked={selectedTransactions.includes(tItem.id)}
-                      onChange={() => toggleSelectTransaction(tItem.id)}
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.date}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                     ${tItem.type === 'sale' ? 'bg-green-100 text-green-800' :
-                        tItem.type === 'purchase' ? 'bg-blue-100 text-blue-800' :
-                          'bg-red-100 text-red-800'
-                      }`}>
-                      {t(tItem.type)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <select
-                      className={`text-xs font-semibold rounded-full px-2 py-1 border-0 cursor-pointer focus:ring-2 focus:ring-offset-1 focus:ring-blue-500
-                      ${tItem.status === 'completed' ? 'bg-green-100 text-green-800' :
-                          tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
-                            'bg-yellow-100 text-yellow-800'
-                        }`}
-                      value={tItem.status || 'pending'}
-                      onChange={(e) => handleStatusChange(tItem, e.target.value)}
-                      onClick={(e) => e.stopPropagation()} // Prevent row click if any
-                    >
-                      <option value="pending">{t('pending')}</option>
-                      <option value="completed">{t('completed')}</option>
-                      <option value="refused">{t('refused')}</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {tItem.delivery_company || '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {tItem.item_id ? (inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item') : tItem.category}
-                    {tItem.quantity && ` (x${tItem.quantity})`}
-                  </td>
-                  <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
+                      tItem.type === 'purchase' ? 'bg-blue-100 text-blue-800' :
+                        'bg-red-100 text-red-800'
                     }`}>
-                    {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount || 0)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button onClick={() => handleEdit(tItem)} className="text-blue-600 hover:text-blue-900 mr-4">
-                      <Edit size={18} />
-                    </button>
-                    <button onClick={() => handleDelete(tItem.id)} className="text-red-600 hover:text-red-900">
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filteredTransactions.length === 0 && (
-                <tr>
-                  <td colSpan="9" className="px-6 py-12 text-center text-gray-500">
-                    {t('noTransactions')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    {t(tItem.type)}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <select
+                    className={`text-xs font-semibold rounded-full px-2 py-1 border-0 cursor-pointer focus:ring-2 focus:ring-offset-1 focus:ring-blue-500
+                      ${tItem.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
+                          'bg-yellow-100 text-yellow-800'
+                      }`}
+                    value={tItem.status || 'pending'}
+                    onChange={(e) => handleStatusChange(tItem, e.target.value)}
+                    onClick={(e) => e.stopPropagation()} // Prevent row click if any
+                  >
+                    <option value="pending">{t('pending')}</option>
+                    <option value="completed">{t('completed')}</option>
+                    <option value="refused">{t('refused')}</option>
+                  </select>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {tItem.delivery_company || '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {tItem.item_id ? (inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item') : tItem.category}
+                  {tItem.quantity && ` (x${tItem.quantity})`}
+                </td>
+                <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                  {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount || 0)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button onClick={() => handleEdit(tItem)} className="text-blue-600 hover:text-blue-900 mr-4">
+                    <Edit size={18} />
+                  </button>
+                  <button onClick={() => handleDelete(tItem.id)} className="text-red-600 hover:text-red-900">
+                    <Trash2 size={18} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {filteredTransactions.length === 0 && (
+              <tr>
+                <td colSpan="9" className="px-6 py-12 text-center text-gray-500">
+                  {t('noTransactions')}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
-  );
+  </div>
+);
 };
 
 const InventoryManager = ({ inventory, setInventory, transactions, setTransactions, suppliers, t }) => {
