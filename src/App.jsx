@@ -1948,6 +1948,12 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 >
                   {t('client')}/{t('supplier')} {sortConfig.key === 'party' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                 </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('address')}
+                >
+                  {t('address')} {sortConfig.key === 'address' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('deliveryCompany')}</th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
@@ -2002,6 +2008,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     </select>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.address || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {tItem.delivery_company || '-'}
                   </td>
