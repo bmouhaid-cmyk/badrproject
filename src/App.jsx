@@ -3401,6 +3401,7 @@ const HistoryView = ({ transactions, inventory, t }) => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('supplier')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('quantity')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('cost')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -3413,6 +3414,16 @@ const HistoryView = ({ transactions, inventory, t }) => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.party}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.quantity}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatCurrency(tItem.amount)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                        ${tItem.status === 'completed' ? 'bg-green-100 text-green-800' :
+                          tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
+                          tItem.status === 'deleted' ? 'bg-gray-200 text-gray-800' :
+                            'bg-yellow-100 text-yellow-800'
+                        }`}>
+                        {tItem.status === 'deleted' ? 'Supprimé' : t(tItem.status || 'pending')}
+                      </span>
+                    </td>
                   </tr>
                 ))}
                 {purchases.length === 0 && (
@@ -3446,9 +3457,10 @@ const HistoryView = ({ transactions, inventory, t }) => {
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                         ${tItem.status === 'completed' ? 'bg-green-100 text-green-800' :
                           tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
+                          tItem.status === 'deleted' ? 'bg-gray-200 text-gray-800' :
                             'bg-yellow-100 text-yellow-800'
                         }`}>
-                        {t(tItem.status || 'pending')}
+                        {tItem.status === 'deleted' ? 'Supprimé' : t(tItem.status || 'pending')}
                       </span>
                     </td>
                   </tr>
