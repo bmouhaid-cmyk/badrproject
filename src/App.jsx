@@ -818,13 +818,32 @@ function App() {
   const [packagingConfig, setPackagingConfig] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
-  const [view, setView] = useState('dashboard'); // dashboard, transactions, inventory, reports, settings, users, treasury
-  const [language, setLanguage] = useState('en'); // en, fr, ar
+  const [view, setView] = useState(() => localStorage.getItem('mabox_view') || 'dashboard'); // dashboard, transactions, inventory, reports, settings, users, treasury
+  const [language, setLanguage] = useState(() => localStorage.getItem('mabox_language') || 'en'); // en, fr, ar
   const [users, setUsers] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('mabox_user');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [error, setError] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // --- Persist State to LocalStorage ---
+  useEffect(() => {
+    localStorage.setItem('mabox_view', view);
+  }, [view]);
+
+  useEffect(() => {
+    localStorage.setItem('mabox_language', language);
+  }, [language]);
+
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('mabox_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('mabox_user');
+    }
+  }, [currentUser]);
 
   // --- Initial Load (Supabase) ---
   useEffect(() => {
