@@ -87,7 +87,7 @@ const translations = {
     supplier: 'Supplier/Payee',
     item: 'Item',
     quantity: 'Quantity',
-    unitPrice: 'Unit Price',
+    unitPrice: 'Total Amount',
     delivery: 'Delivery',
     packaging: 'Packaging',
     phone: 'Phone',
@@ -182,7 +182,7 @@ const translations = {
     supplier: 'Fournisseur/Bénéficiaire',
     item: 'Article',
     quantity: 'Quantité',
-    unitPrice: 'Prix Unitaire',
+    unitPrice: 'Montant Total',
     delivery: 'Livraison',
     packaging: 'Emballage',
     phone: 'Téléphone',
@@ -293,7 +293,7 @@ const translations = {
     supplier: 'المورد/المستفيد',
     item: 'العنصر',
     quantity: 'الكمية',
-    unitPrice: 'سعر الوحدة',
+    unitPrice: 'المبلغ الإجمالي',
     delivery: 'التوصيل',
     packaging: 'التغليف',
     phone: 'الهاتف',
@@ -1334,9 +1334,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               const currentQty = parseInt(item.quantity);
               const newQty = parseInt(formData.quantity);
               const currentBuyPrice = parseFloat(item.buy_price);
-              const purchasePrice = parseFloat(formData.amount);
+              const purchasePrice = parseFloat(formData.amount) / newQty;
 
-              const totalValue = (currentQty * currentBuyPrice) + (newQty * purchasePrice);
+              const totalValue = (currentQty * currentBuyPrice) + parseFloat(formData.amount);
               const totalQty = currentQty + newQty;
               const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
 
