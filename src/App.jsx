@@ -515,6 +515,35 @@ const handleDelete = async (id) => {
                   <option value="admin">{t('admin')}</option>
                 </select>
               </div>
+              
+              {!isEditing && formData.quantity > 0 && (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4 space-y-4">
+                  <h5 className="font-medium text-gray-800 flex items-center gap-2"><CreditCard size={18} className="text-blue-500" /> Détails du Paiement (Stock Initial)</h5>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
+                    <select className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.paymentStatus} onChange={(e) => setFormData({...formData, paymentStatus: e.target.value})}>
+                        <option value="pending">NON PAYÉ (Crédit)</option>
+                        <option value="completed">PAYÉ (Immédiat)</option>
+                    </select>
+                  </div>
+                  {formData.paymentStatus === 'completed' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
+                        <select required className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankAccountId} onChange={(e) => setFormData({...formData, bankAccountId: e.target.value})}>
+                            <option value="">Sélectionner un compte</option>
+                            {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
+                        <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankFees} onChange={(e) => setFormData({...formData, bankFees: e.target.value})} placeholder="Optionnel" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   type="button"
@@ -2406,7 +2435,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
   const uniqueCategories = [...new Set(inventory.map(i => i.category).filter(Boolean))];
   const [statusFilter, setStatusFilter] = useState('Tous les Statuts');
   const [formData, setFormData] = useState({
-    name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5
+    name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'pending', bankAccountId: '', bankFees: ''
   });
 
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
@@ -2465,19 +2494,35 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
           if (parseInt(dbItem.quantity) > 0) {
             const transaction = {
               date: new Date().toISOString().split('T')[0],
-              type: 'purchase', status: 'completed', category: 'Initial Stock',
+              type: 'purchase', status: formData.paymentStatus, category: 'Initial Stock',
               party: dbItem.supplier || 'Initial Stock', item_id: newResult.id, item_name: newResult.name,
               quantity: parseInt(dbItem.quantity), amount: (parseFloat(dbItem.buy_price) || 0) * parseInt(dbItem.quantity),
-              notes: 'Initial inventory creation'
+              notes: 'Initial inventory creation',
+              bank_account_id: formData.paymentStatus === 'completed' ? (formData.bankAccountId || null) : null
             };
-            const { data: txData } = await supabase.from('transactions').insert([transaction]).select();
-            if (txData) setTransactions(prev => [txData[0], ...prev]);
+            
+            const txsToInsert = [transaction];
+            if (formData.paymentStatus === 'completed' && formData.bankFees && parseFloat(formData.bankFees) > 0) {
+                txsToInsert.push({
+                    date: transaction.date,
+                    type: 'expense',
+                    category: 'Frais Bancaires',
+                    party: 'Banque',
+                    amount: parseFloat(formData.bankFees),
+                    status: 'completed',
+                    bank_account_id: formData.bankAccountId,
+                    notes: `Frais de paiement pour ${dbItem.supplier || 'Stock Initial'} (Ajout Produit)`
+                });
+            }
+
+            const { data: txData } = await supabase.from('transactions').insert(txsToInsert).select();
+            if (txData) setTransactions(prev => [...txData, ...prev]);
           }
         }
       }
       if (error) { alert('Error saving item: ' + error.message); return; }
       setShowForm(false);
-      setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 });
+      setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'pending', bankAccountId: '', bankFees: '' });
       setIsEditing(false);
     } catch (err) { alert('An unexpected error occurred.'); }
   };
@@ -2662,7 +2707,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
           <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
             <Download size={16} /><span>Exporter</span>
           </button>
-          <button onClick={() => { setIsEditing(false); setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 }); setShowForm(true); }} className="flex items-center space-x-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-lg font-medium text-sm whitespace-nowrap">
+          <button onClick={() => { setIsEditing(false); setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'pending', bankAccountId: '', bankFees: '' }); setShowForm(true); }} className="flex items-center space-x-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-lg font-medium text-sm whitespace-nowrap">
             <Plus size={16} /><span>Nouveau Produit / Variante</span>
           </button>
           <button onClick={() => openPurchaseModal()} className="flex items-center space-x-2 px-4 py-2 bg-[#f4a261] hover:bg-[#e76f51] text-white rounded-lg font-medium text-sm whitespace-nowrap">
@@ -2712,6 +2757,35 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
                   <input type="number" required className="mt-1 block w-full rounded-md border p-2" value={formData.lowStockThreshold} onChange={e => setFormData({ ...formData, lowStockThreshold: e.target.value })} />
                 </div>
               </div>
+              
+              {!isEditing && formData.quantity > 0 && (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4 space-y-4">
+                  <h5 className="font-medium text-gray-800 flex items-center gap-2"><CreditCard size={18} className="text-blue-500" /> Détails du Paiement (Stock Initial)</h5>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
+                    <select className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.paymentStatus} onChange={(e) => setFormData({...formData, paymentStatus: e.target.value})}>
+                        <option value="pending">NON PAYÉ (Crédit)</option>
+                        <option value="completed">PAYÉ (Immédiat)</option>
+                    </select>
+                  </div>
+                  {formData.paymentStatus === 'completed' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
+                        <select required className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankAccountId} onChange={(e) => setFormData({...formData, bankAccountId: e.target.value})}>
+                            <option value="">Sélectionner un compte</option>
+                            {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
+                        <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankFees} onChange={(e) => setFormData({...formData, bankFees: e.target.value})} placeholder="Optionnel" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-end space-x-3 mt-6">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">{t('cancel')}</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{t('save')}</button>
@@ -3392,6 +3466,32 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
         if (data) {
           setSuppliers(suppliers.map(s => s.id === editingId ? data[0] : s));
           
+          let updatedTx = [...transactions];
+          
+          // Cascading Name Change to Transactions
+          if (originalSupplier.name !== newSupplier.name) {
+              await supabase.from('transactions').update({ party: newSupplier.name }).eq('party', originalSupplier.name);
+              
+              const oldNotes = `pour ${originalSupplier.name}`;
+              const newNotes = `pour ${newSupplier.name}`;
+              const feesToUpdate = transactions.filter(t => t.category === 'Frais Bancaires' && t.notes && t.notes.includes(oldNotes));
+              for(const fee of feesToUpdate) {
+                  const updatedNotes = fee.notes.replace(oldNotes, newNotes);
+                  await supabase.from('transactions').update({ notes: updatedNotes }).eq('id', fee.id);
+              }
+
+              updatedTx = updatedTx.map(t => {
+                  let modified = t;
+                  if (t.party === originalSupplier.name) {
+                      modified = { ...modified, party: newSupplier.name };
+                  }
+                  if (t.category === 'Frais Bancaires' && t.notes && t.notes.includes(oldNotes)) {
+                      modified = { ...modified, notes: t.notes.replace(oldNotes, newNotes) };
+                  }
+                  return modified;
+              });
+          }
+
           const diffPurchases = parseFloat(newSupplier.totalPurchases || 0) - originalStats.totalPurchases;
           const diffPaid = parseFloat(newSupplier.totalPaid || 0) - originalStats.paid;
           
@@ -3422,10 +3522,11 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
           if (newTransactions.length > 0) {
               const { data: txData } = await supabase.from('transactions').insert(newTransactions).select();
               if (txData) {
-                  setTransactions(prev => [...txData, ...prev]);
+                  updatedTx = [...txData, ...updatedTx];
               }
           }
           
+          setTransactions(updatedTx);
           setNewSupplier({ name: '', contact: '' });
           setEditingId(null);
           setShowAddForm(false);
@@ -3442,9 +3543,63 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   };
 
   const handleDeleteSupplier = async (id) => {
-    if (window.confirm(t('deleteConfirm'))) {
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer ce fournisseur ? ATTENTION : Toutes les transactions, achats, et paiements liés seront supprimés, et le stock sera ajusté.")) {
+      const supplierToDelete = suppliers.find(s => s.id === id);
+      if (!supplierToDelete) return;
+
+      // 1. Revert Inventory Quantities
+      const supplierPurchases = transactions.filter(t => t.party === supplierToDelete.name && t.type === 'purchase');
+      for (const purchase of supplierPurchases) {
+          if (purchase.item_id) {
+              const item = inventory.find(i => i.id === purchase.item_id);
+              if (item) {
+                  const currentQty = parseInt(item.quantity || 0);
+                  const purchaseQty = parseInt(purchase.quantity || 0);
+                  const newQty = Math.max(0, currentQty - purchaseQty);
+                  
+                  const currentInitial = parseInt(item.initial_quantity || item.quantity || 0);
+                  const newInitial = Math.max(0, currentInitial - purchaseQty);
+
+                  await supabase.from('inventory').update({ quantity: newQty, initial_quantity: newInitial }).eq('id', item.id);
+                  setInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: newQty, initial_quantity: newInitial } : i));
+              }
+          }
+      }
+
+      // 2. Delete related fee transactions (Frais Bancaires)
+      const feesNotesStr = `pour ${supplierToDelete.name}`;
+      const feesToDelete = transactions.filter(t => t.category === 'Frais Bancaires' && t.notes && t.notes.includes(feesNotesStr));
+      for (const fee of feesToDelete) {
+          await supabase.from('transactions').delete().eq('id', fee.id);
+      }
+
+      // 3. Delete all supplier transactions
+      await supabase.from('transactions').delete().eq('party', supplierToDelete.name);
+
+      // 4. Delete Supplier
       await supabase.from('suppliers').delete().eq('id', id);
+
+      // 5. Add History Log
+      const deletionLog = {
+          date: new Date().toISOString().split('T')[0],
+          type: 'expense',
+          category: 'Log Système',
+          party: 'Système',
+          amount: 0,
+          status: 'completed',
+          notes: `Suppression du fournisseur "${supplierToDelete.name}" et de son historique.`
+      };
+      
+      const { data: logData } = await supabase.from('transactions').insert([deletionLog]).select();
+
+      // 6. Update local state
       setSuppliers(suppliers.filter(s => s.id !== id));
+      const feesIds = feesToDelete.map(f => f.id);
+      let updatedTransactions = transactions.filter(t => t.party !== supplierToDelete.name && !feesIds.includes(t.id));
+      if (logData) {
+          updatedTransactions = [logData[0], ...updatedTransactions];
+      }
+      setTransactions(updatedTransactions);
     }
   };
 
@@ -4429,6 +4584,35 @@ const TreasuryManager = ({ transactions, setTransactions, bankAccounts, setBankA
                   onChange={e => setFormData({ ...formData, initialBalance: e.target.value })}
                 />
               </div>
+              
+              {!isEditing && formData.quantity > 0 && (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4 space-y-4">
+                  <h5 className="font-medium text-gray-800 flex items-center gap-2"><CreditCard size={18} className="text-blue-500" /> Détails du Paiement (Stock Initial)</h5>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
+                    <select className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.paymentStatus} onChange={(e) => setFormData({...formData, paymentStatus: e.target.value})}>
+                        <option value="pending">NON PAYÉ (Crédit)</option>
+                        <option value="completed">PAYÉ (Immédiat)</option>
+                    </select>
+                  </div>
+                  {formData.paymentStatus === 'completed' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
+                        <select required className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankAccountId} onChange={(e) => setFormData({...formData, bankAccountId: e.target.value})}>
+                            <option value="">Sélectionner un compte</option>
+                            {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
+                        <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankFees} onChange={(e) => setFormData({...formData, bankFees: e.target.value})} placeholder="Optionnel" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-end space-x-3 mt-6">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Enregistrer</button>
