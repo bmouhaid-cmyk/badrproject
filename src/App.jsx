@@ -41,6 +41,7 @@ import {
   BarChart2,
   UserPlus,
   Archive,
+  RotateCcw,
   Hourglass,
   MonitorSmartphone,
   Filter,
@@ -572,14 +573,20 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
   
   const archivedTransactions = transactions.filter(t => t.is_archived);
   
-  const filteredArchived = archivedTransactions.filter(t => 
-    (t.item_name && t.item_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (t.party && t.party.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (t.category && t.category.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredArchived = archivedTransactions.filter(t => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    const itemNameStr = typeof t.item_name === 'string' ? t.item_name : String(t.item_name || '');
+    const partyStr = typeof t.party === 'string' ? t.party : String(t.party || '');
+    const categoryStr = typeof t.category === 'string' ? t.category : String(t.category || '');
+    return itemNameStr.toLowerCase().includes(term) || 
+           partyStr.toLowerCase().includes(term) || 
+           categoryStr.toLowerCase().includes(term);
+  });
 
   const handleUnarchive = async (id) => {
     const { error } = await supabase.from('transactions').update({ is_archived: false }).eq('id', id);
@@ -591,18 +598,59 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
   };
 
   const handleArchivePeriod = async () => {
-    if (!startDate || !endDate) return alert("Veuillez sélectionner les dates.");
-    if (window.confirm(`Êtes-vous sûr de vouloir archiver les transactions entre le ${startDate} et le ${endDate} ?`)) {
-      const idsToArchive = transactions.filter(t => !t.is_archived && t.status === 'completed' && t.date >= startDate && t.date <= endDate).map(t => t.id);
-      if (idsToArchive.length === 0) return alert("Aucune transaction trouvée pour cette période.");
-      
-      const { error } = await supabase.from('transactions').update({ is_archived: true }).in('id', idsToArchive);
-      if (!error) {
-        setTransactions(prev => prev.map(t => idsToArchive.includes(t.id) ? { ...t, is_archived: true } : t));
-        alert("Période archivée avec succès !");
-      } else {
-        alert("Error archiving: " + error.message);
+    try {
+      if (!startDate || !endDate) return alert("Veuillez sélectionner les dates.");
+      if (window.confirm(`Êtes-vous sûr de vouloir archiver les transactions entre le ${startDate} et le ${endDate} ?`)) {
+        const idsToArchive = transactions.filter(t => t && !t.is_archived && t.status === 'completed' && t.date && t.date >= startDate && t.date <= endDate).map(t => t.id);
+        if (idsToArchive.length === 0) return alert("Aucune transaction trouvée pour cette période.");
+        
+        const { error } = await supabase.from('transactions').update({ is_archived: true }).in('id', idsToArchive);
+        if (!error) {
+          setTransactions(prev => prev.map(t => idsToArchive.includes(t?.id) ? { ...t, is_archived: true } : t));
+          alert("Période archivée avec succès !");
+        } else {
+          alert("Erreur lors de l'archivage: " + error.message);
+        }
       }
+    } catch (err) {
+      console.error("Crash dans handleArchivePeriod:", err);
+      alert("Une erreur inattendue s'est produite.");
+    }
+  };
+
+  
+  const handleUnarchiveSelected = async () => {
+    if (selectedIds.length === 0) return alert("Veuillez sélectionner au moins une transaction.");
+    if (window.confirm(`Êtes-vous sûr de vouloir désarchiver ${selectedIds.length} transaction(s) ?`)) {
+      const { error } = await supabase.from('transactions').update({ is_archived: false }).in('id', selectedIds);
+      if (!error) {
+        setTransactions(prev => prev.map(t => selectedIds.includes(t.id) ? { ...t, is_archived: false } : t));
+        setSelectedIds([]);
+        alert("Transactions désarchivées avec succès !");
+      } else {
+        alert("Erreur: " + error.message);
+      }
+    }
+  };
+
+  const handleUnarchivePeriod = async () => {
+    try {
+      if (!startDate || !endDate) return alert("Veuillez sélectionner les dates.");
+      if (window.confirm(`Êtes-vous sûr de vouloir désarchiver les transactions entre le ${startDate} et le ${endDate} ?`)) {
+        const idsToUnarchive = transactions.filter(t => t && t.is_archived && t.date && t.date >= startDate && t.date <= endDate).map(t => t.id);
+        if (idsToUnarchive.length === 0) return alert("Aucune transaction archivée trouvée pour cette période.");
+        
+        const { error } = await supabase.from('transactions').update({ is_archived: false }).in('id', idsToUnarchive);
+        if (!error) {
+          setTransactions(prev => prev.map(t => idsToUnarchive.includes(t?.id) ? { ...t, is_archived: false } : t));
+          alert("Période désarchivée avec succès !");
+        } else {
+          alert("Erreur lors du désarchivage: " + error.message);
+        }
+      }
+    } catch (err) {
+      console.error("Crash dans handleUnarchivePeriod:", err);
+      alert("Une erreur inattendue s'est produite.");
     }
   };
 
@@ -641,6 +689,9 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
             <button onClick={handleArchivePeriod} className="bg-orange-500 text-white px-3 py-1.5 rounded text-sm hover:bg-orange-600">
               Archiver Période
             </button>
+            <button onClick={handleUnarchivePeriod} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">
+              Désarchiver Période
+            </button>
           </div>
           <button onClick={handleArchiveAll} className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium shadow-sm hover:bg-red-700 whitespace-nowrap">
             Archiver Tout (Chapitre)
@@ -649,13 +700,32 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
       </div>
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="mb-4">
+          <div className="mb-4 flex flex-col md:flex-row justify-between items-center gap-4">
              <input type="text" placeholder="Rechercher dans les archives..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full md:w-1/3 border rounded-lg p-2 text-sm" />
+             {selectedIds.length > 0 && (
+               <button onClick={handleUnarchiveSelected} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium shadow-sm hover:bg-blue-700 flex items-center gap-2">
+                 <RotateCcw size={18} />
+                 Désarchiver Sélection ({selectedIds.length})
+               </button>
+             )}
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <input 
+                      type="checkbox" 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(filteredArchived.map(t => t.id));
+                        } else {
+                          setSelectedIds([]);
+                        }
+                      }}
+                      checked={filteredArchived.length > 0 && selectedIds.length === filteredArchived.length}
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('date')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('type')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('party')}</th>
@@ -666,7 +736,20 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredArchived.map(tx => (
                   <tr key={tx.id} className="hover:bg-gray-50 opacity-70">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.date}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedIds.includes(tx.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(prev => [...prev, tx.id]);
+                        } else {
+                          setSelectedIds(prev => prev.filter(id => id !== tx.id));
+                        }
+                      }}
+                    />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.date}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t(tx.type)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.party || tx.item_name || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{parseFloat(tx.amount || 0).toFixed(2)} MAD</td>
@@ -678,7 +761,7 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
                   </tr>
                 ))}
                 {filteredArchived.length === 0 && (
-                  <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-500">Aucune transaction archivée trouvée.</td></tr>
+                  <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">Aucune transaction archivée trouvée.</td></tr>
                 )}
               </tbody>
             </table>
@@ -2284,6 +2367,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
   const [statusFilter, setStatusFilter] = useState('Tous les Statuts');
   const [formData, setFormData] = useState({
     name: '', supplier: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5
@@ -3099,7 +3183,7 @@ const HistoryView = ({ transactions, inventory, t }) => {
                   </tr>
                 ))}
                 {purchases.length === 0 && (
-                  <tr><td colSpan="5" className="px-6 py-12 text-center text-sm text-gray-500">{t('noTransactions')}</td></tr>
+                  <tr><td colSpan="6" className="px-6 py-12 text-center text-sm text-gray-500">{t('noTransactions')}</td></tr>
                 )}
               </tbody>
             </table>
@@ -3155,6 +3239,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
 
   // Modals state
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
