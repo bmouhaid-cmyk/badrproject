@@ -2678,6 +2678,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Produit & SKU</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Catégorie</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Fournisseur</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Quantité</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Prix d'Achat Moyen<br/><span className="text-[10px] text-gray-400 font-normal">(CMUP)</span></th>
@@ -2707,6 +2708,15 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
                           <div className="text-xs text-gray-400">{sku}</div>
                         </div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {item.category ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {item.category}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 font-medium">{item.supplier || '-'}</td>
                     <td className="px-6 py-4">
