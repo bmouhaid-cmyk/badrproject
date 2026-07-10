@@ -3344,7 +3344,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [selectedSupplier, setSelectedSupplier] = useState('');
   
   // Purchase form state
-  const [purchaseForm, setPurchaseForm] = useState({ date: new Date().toISOString().split('T')[0], itemId: '', quantity: '', amount: '', status: 'pending', bankAccountId: '' });
+  const [purchaseForm, setPurchaseForm] = useState({ date: new Date().toISOString().split('T')[0], itemId: '', quantity: '', amount: '', status: 'pending', bankAccountId: '', fees: '' });
   
   // Payment form state
   const [paymentForm, setPaymentForm] = useState({ date: new Date().toISOString().split('T')[0], amount: '', bankAccountId: '', fees: '' });
@@ -3464,7 +3464,21 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
       bank_account_id: purchaseForm.status === 'completed' ? (purchaseForm.bankAccountId || null) : null
     };
 
-    const { data, error } = await supabase.from('transactions').insert([dbTransaction]).select();
+    const transactionsToInsert = [dbTransaction];
+    if (purchaseForm.status === 'completed' && purchaseForm.fees && parseFloat(purchaseForm.fees) > 0) {
+        transactionsToInsert.push({
+            date: purchaseForm.date,
+            type: 'expense',
+            category: 'Frais Bancaires',
+            party: 'Banque',
+            amount: parseFloat(purchaseForm.fees),
+            status: 'completed',
+            bank_account_id: purchaseForm.bankAccountId,
+            notes: `Frais de paiement pour ${selectedSupplier} (Nouvel Achat)`
+        });
+    }
+
+    const { data, error } = await supabase.from('transactions').insert(transactionsToInsert).select();
     if (data) {
       setTransactions(prev => [data[0], ...prev]);
       
@@ -3486,6 +3500,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
       }
       
       setShowPurchaseModal(false);
+      setPurchaseForm({ date: new Date().toISOString().split('T')[0], itemId: '', quantity: '', amount: '', status: 'pending', bankAccountId: '', fees: '' });
     } else if (error) {
         alert(error.message);
     }
@@ -3802,12 +3817,18 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                 </select>
               </div>
               {purchaseForm.status === 'completed' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
-                    <select required className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.bankAccountId} onChange={(e) => setPurchaseForm({...purchaseForm, bankAccountId: e.target.value})}>
-                        <option value="">Sélectionner un compte</option>
-                        {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
+                      <select required className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.bankAccountId} onChange={(e) => setPurchaseForm({...purchaseForm, bankAccountId: e.target.value})}>
+                          <option value="">Sélectionner un compte</option>
+                          {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
+                      <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.fees} onChange={(e) => setPurchaseForm({...purchaseForm, fees: e.target.value})} placeholder="Optionnel" />
+                    </div>
                   </div>
               )}
               <div className="pt-4 flex justify-end gap-3">
