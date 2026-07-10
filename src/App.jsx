@@ -574,7 +574,6 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
-  const uniqueCategories = [...new Set(inventory.map(i => i.category).filter(Boolean))];
   
   const archivedTransactions = transactions.filter(t => t.is_archived);
   
