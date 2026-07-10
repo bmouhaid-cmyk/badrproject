@@ -2554,7 +2554,10 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
   };
 
   const filteredInventory = [...inventory].filter(item => {
-      const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const searchTermLower = searchTerm.toLowerCase();
+      const matchesSearch = item.name.toLowerCase().includes(searchTermLower) ||
+                            (item.category && item.category.toLowerCase().includes(searchTermLower)) ||
+                            (item.supplier && item.supplier.toLowerCase().includes(searchTermLower));
       const isLowStock = parseInt(item.quantity) <= parseInt(item.low_stock_threshold);
       const isOutOfStock = parseInt(item.quantity) <= 0;
       let matchesStatus = true;
@@ -2645,7 +2648,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
         <div className="flex items-center space-x-4 w-full xl:w-auto">
           <div className="relative w-full xl:w-64">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-            <input type="text" placeholder="Rechercher un produit..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 text-sm" />
+            <input type="text" placeholder="Rechercher (Produit, Catégorie, Fournisseur)..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 text-sm" />
           </div>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-blue-500">
             <option>Tous les Statuts</option><option>Disponible</option><option>Stock Bas</option><option>Rupture</option>
