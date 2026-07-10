@@ -838,7 +838,7 @@ function App() {
         // Fetch Supplierst
         const { data: txData, error: txError } = await supabase.from('transactions').select('*').order('date', { ascending: false });
         if (txError) throw txError;
-        if (txData) setTransactions(txData);
+        if (txData) setTransactions(txData.filter(t => t.status !== 'deleted'));
 
         const { data: userData, error: userError } = await supabase.from('app_users').select('*');
         if (userError) throw userError;
@@ -895,7 +895,13 @@ function App() {
       if (payload.eventType === 'INSERT') setTransactions(prev => [payload.new, ...prev]);
       // Note: For complex updates/deletes that affect order, re-fetching might be safer, but simple state updates work for now
       if (payload.eventType === 'DELETE') setTransactions(prev => prev.filter(t => t.id !== payload.old.id));
-      if (payload.eventType === 'UPDATE') setTransactions(prev => prev.map(t => String(t.id) === String(payload.new.id) ? payload.new : t));
+      if (payload.eventType === 'UPDATE') {
+        if (payload.new.status === 'deleted') {
+          setTransactions(prev => prev.filter(t => String(t.id) !== String(payload.new.id)));
+        } else {
+          setTransactions(prev => prev.map(t => String(t.id) === String(payload.new.id) ? payload.new : t));
+        }
+      }
     }).subscribe();
 
     const bankSub = supabase.channel('bank_accounts').on('postgres_changes', { event: '*', schema: 'public', table: 'bank_accounts' }, payload => {
@@ -1669,7 +1675,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
       const { error } = await supabase.from('transactions').update({ status: 'deleted' }).eq('id', id);
       if (!error) {
-        setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: 'deleted' } : t));
+        setTransactions(prev => prev.filter(t => t.id !== id));
 
         // 2. Revert Inventory Logic
         // Ensure we parse quantity correctly as integer
@@ -1744,7 +1750,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       // 2. Soft delete
       const { error } = await supabase.from('transactions').update({ status: 'deleted' }).in('id', selectedTransactions);
       if (!error) {
-        setTransactions(prev => prev.map(t => selectedTransactions.includes(t.id) ? { ...t, status: 'deleted' } : t));
+        setTransactions(prev => prev.filter(t => !selectedTransactions.includes(t.id)));
         setSelectedTransactions([]);
       } else {
         alert('Error deleting transactions: ' + error.message);
