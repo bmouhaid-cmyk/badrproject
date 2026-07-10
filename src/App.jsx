@@ -1947,7 +1947,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
           <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h4 className="text-lg font-bold mb-4 text-gray-800">{t('newTransaction')}</h4>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{t('date')}</label>
                   <input
@@ -1959,10 +1959,10 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">{t('type')}</label>
-                  <div className="flex space-x-2">
+                  <label className="block text-sm font-medium text-gray-700">{t('type')} & Statut</label>
+                  <div className="flex space-x-2 mt-1">
                     <select
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
                       value={formData.type}
                       onChange={e => handleTypeChange(e.target.value)}
                     >
@@ -1971,7 +1971,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                       <option value="expense">{t('expense')}</option>
                     </select>
                     <select
-                      className={`mt-1 block w-full rounded-md border shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-white font-medium
+                      className={`block w-full rounded-md border shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-white font-medium
                         ${formData.status === 'pending' ? 'bg-yellow-500 border-yellow-600' :
                           formData.status === 'completed' ? 'bg-green-600 border-green-700' :
                             'bg-red-600 border-red-700'
@@ -1985,6 +1985,36 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     </select>
                   </div>
                 </div>
+
+                {(formData.type === 'purchase' || formData.type === 'expense') && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Catégorie</label>
+                      <input
+                        type="text"
+                        list="transaction-categories"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                        value={formData.category || ''}
+                        onChange={e => setFormData({ ...formData, category: e.target.value })}
+                        placeholder="-- Sélectionnez --"
+                      />
+                      <datalist id="transaction-categories">
+                        {categories.map((c, i) => <option key={i} value={c} />)}
+                        {[...new Set(inventory.map(i => i.category).filter(Boolean))].map((c, i) => <option key={'inv'+i} value={c} />)}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Réf. Bon / Facture</label>
+                      <input
+                        type="text"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                        value={formData.notes || ''}
+                        onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                        placeholder="N° Bon..."
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {formData.type !== 'expense' && (
@@ -2153,30 +2183,15 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               )}
 
               {formData.type === 'expense' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('amount')}</label>
-                    <input
-                      type="number"
-                      required
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                      value={formData.amount}
-                      onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('type')}</label>
-                    <input
-                      type="text"
-                      list="categories"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                      value={formData.category}
-                      onChange={e => setFormData({ ...formData, category: e.target.value })}
-                    />
-                    <datalist id="categories">
-                      {categories.map((c, i) => <option key={i} value={c} />)}
-                    </datalist>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">{t('amount')}</label>
+                  <input
+                    type="number"
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                    value={formData.amount}
+                    onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                  />
                 </div>
               )}
 
@@ -2194,6 +2209,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 </select>
               </div>
 
+              {formData.type === 'sale' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700">{t('notes')}</label>
                 <textarea
@@ -2202,6 +2218,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                   onChange={e => setFormData({ ...formData, notes: e.target.value })}
                 />
               </div>
+            )}
 
               <div className="flex justify-end space-x-3 mt-6">
                 <button
