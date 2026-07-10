@@ -59,6 +59,7 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 const translations = {
   en: {
     dashboard: 'Dashboard',
+    archives: 'Archives',
     transactions: 'Transactions',
     inventory: 'Inventory',
     reports: 'Reports',
@@ -265,6 +266,7 @@ const translations = {
   },
   ar: {
     dashboard: 'لوحة القيادة',
+    archives: 'الأرشيف',
     transactions: 'المعاملات',
     inventory: 'المخزون',
     reports: 'التقارير',
@@ -439,7 +441,19 @@ const UserManagement = ({ users, setUsers, t }) => {
     }
   };
 
-  const handleDelete = async (id) => {
+    const handleArchive = async (tItem) => {
+    if (tItem.status !== 'completed') return alert("Vous ne pouvez archiver que les transactions complétées.");
+    if (window.confirm("Voulez-vous archiver cette transaction ?")) {
+      const { error } = await supabase.from('transactions').update({ is_archived: true }).eq('id', tItem.id);
+      if (!error) {
+        setTransactions(prev => prev.map(t => t.id === tItem.id ? { ...t, is_archived: true } : t));
+      } else {
+        alert("Error archiving: " + error.message);
+      }
+    }
+  };
+
+const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
       if (users.length <= 1) {
         alert('Cannot delete the last user!');
@@ -548,6 +562,127 @@ const UserManagement = ({ users, setUsers, t }) => {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+};
+
+
+const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  
+  const archivedTransactions = transactions.filter(t => t.is_archived);
+  
+  const filteredArchived = archivedTransactions.filter(t => 
+    (t.item_name && t.item_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (t.party && t.party.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (t.category && t.category.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const handleUnarchive = async (id) => {
+    const { error } = await supabase.from('transactions').update({ is_archived: false }).eq('id', id);
+    if (!error) {
+      setTransactions(prev => prev.map(t => t.id === id ? { ...t, is_archived: false } : t));
+    } else {
+      alert("Error unarchiving: " + error.message);
+    }
+  };
+
+  const handleArchivePeriod = async () => {
+    if (!startDate || !endDate) return alert("Veuillez sélectionner les dates.");
+    if (window.confirm(`Êtes-vous sûr de vouloir archiver les transactions entre le ${startDate} et le ${endDate} ?`)) {
+      const idsToArchive = transactions.filter(t => !t.is_archived && t.status === 'completed' && t.date >= startDate && t.date <= endDate).map(t => t.id);
+      if (idsToArchive.length === 0) return alert("Aucune transaction trouvée pour cette période.");
+      
+      const { error } = await supabase.from('transactions').update({ is_archived: true }).in('id', idsToArchive);
+      if (!error) {
+        setTransactions(prev => prev.map(t => idsToArchive.includes(t.id) ? { ...t, is_archived: true } : t));
+        alert("Période archivée avec succès !");
+      } else {
+        alert("Error archiving: " + error.message);
+      }
+    }
+  };
+
+  const handleArchiveAll = async () => {
+    if (window.confirm("Êtes-vous sûr de vouloir archiver le chapitre actuel ? Toutes les transactions complétées seront archivées. Vos soldes resteront intacts.")) {
+      const idsToArchive = transactions.filter(t => !t.is_archived && t.status === 'completed').map(t => t.id);
+      if (idsToArchive.length === 0) return alert("Aucune transaction à archiver.");
+      
+      const { error } = await supabase.from('transactions').update({ is_archived: true }).in('id', idsToArchive);
+      if (!error) {
+        setTransactions(prev => prev.map(t => idsToArchive.includes(t.id) ? { ...t, is_archived: true } : t));
+        alert("Chapitre archivé avec succès !");
+      } else {
+        alert("Error archiving: " + error.message);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex items-center space-x-4">
+          <div className="p-3 bg-gray-100 text-gray-600 rounded-lg">
+            <Archive size={32} />
+          </div>
+          <div>
+            <h3 className="text-2xl font-bold text-gray-800">Archives des Transactions</h3>
+            <p className="text-sm text-gray-500">Chapitres précédents et historique caché.</p>
+          </div>
+        </div>
+        <div className="flex flex-col md:flex-row gap-3 items-center">
+          <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm border-gray-300 rounded p-1" />
+            <span className="text-gray-500 text-sm">à</span>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm border-gray-300 rounded p-1" />
+            <button onClick={handleArchivePeriod} className="bg-orange-500 text-white px-3 py-1.5 rounded text-sm hover:bg-orange-600">
+              Archiver Période
+            </button>
+          </div>
+          <button onClick={handleArchiveAll} className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium shadow-sm hover:bg-red-700 whitespace-nowrap">
+            Archiver Tout (Chapitre)
+          </button>
+        </div>
+      </div>
+      
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="mb-4">
+             <input type="text" placeholder="Rechercher dans les archives..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full md:w-1/3 border rounded-lg p-2 text-sm" />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('date')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('type')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('party')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('amount')}</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredArchived.map(tx => (
+                  <tr key={tx.id} className="hover:bg-gray-50 opacity-70">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.date}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t(tx.type)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.party || tx.item_name || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{parseFloat(tx.amount || 0).toFixed(2)} MAD</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button onClick={() => handleUnarchive(tx.id)} className="text-blue-600 hover:text-blue-900 flex items-center justify-end gap-1 w-full">
+                        <RotateCcw size={16} /> Désarchiver
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {filteredArchived.length === 0 && (
+                  <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-500">Aucune transaction archivée trouvée.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
       </div>
     </div>
   );
@@ -765,6 +900,7 @@ function App() {
           <NavItem id="treasury" icon={Landmark} label={t('treasury')} />
           <NavItem id="transactions" icon={ArrowRightLeft} label={t('transactions')} />
           <NavItem id="inventory" icon={Package} label={t('inventory')} />
+          <NavItem id="archives" icon={Archive} label={t('archives')} />
           <NavItem id="history" icon={FileText} label={t('history')} />
           <NavItem id="suppliers" icon={Truck} label={t('suppliers')} />
           {currentUser.role === 'admin' && (
@@ -873,6 +1009,16 @@ function App() {
               packagingConfig={packagingConfig}
               suppliers={suppliers}
               bankAccounts={bankAccounts}
+              t={t}
+            />
+          )}
+
+          
+          {view === 'archives' && (
+            <ArchiveManager
+              transactions={transactions}
+              setTransactions={setTransactions}
+              supabase={supabase}
               t={t}
             />
           )}
@@ -2104,10 +2250,13 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount || 0)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button onClick={() => handleEdit(tItem)} className="text-blue-600 hover:text-blue-900 mr-4">
+                    <button onClick={() => handleArchive(tItem)} className="text-orange-500 hover:text-orange-700 mr-4" title="Archiver">
+                      <Archive size={18} />
+                    </button>
+                    <button onClick={() => handleEdit(tItem)} className="text-blue-600 hover:text-blue-900 mr-4" title="Modifier">
                       <Edit size={18} />
                     </button>
-                    <button onClick={() => handleDelete(tItem.id)} className="text-red-600 hover:text-red-900">
+                    <button onClick={() => handleDelete(tItem.id)} className="text-red-600 hover:text-red-900" title="Supprimer">
                       <Trash2 size={18} />
                     </button>
                   </td>
@@ -2133,6 +2282,8 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
   const [isEditing, setIsEditing] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('Tous les Statuts');
   const [formData, setFormData] = useState({
     name: '', supplier: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5
@@ -2569,7 +2720,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-100">
                         {transactions
-                            .filter(t => (t.type === 'purchase' || t.type === 'sale') && (!selectedItemForAction || t.item_id === selectedItemForAction.id))
+                            .filter(t => (t.type === 'purchase' || t.type === 'sale') && !t.is_archived && (!selectedItemForAction || t.item_id === selectedItemForAction.id))
                             .map(t => (
                             <tr key={t.id} className="hover:bg-gray-50">
                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
@@ -2647,7 +2798,8 @@ const ReportView = ({ transactions, inventory, t }) => {
     let pendingCol = 0;
     let pendingPay = 0;
 
-    filteredTransactions.forEach(t => {
+    const activeTransactions = filteredTransactions.filter(t => !t.is_archived);
+    activeTransactions.forEach(t => {
       const amount = parseFloat(t.amount || 0);
       if (t.type === 'sale') {
         if (t.status === 'completed') income += amount;
@@ -2663,7 +2815,7 @@ const ReportView = ({ transactions, inventory, t }) => {
     // But for "Pending Balance" in suppliers, it was all time. 
     // Let's stick to filtered for the report to show "Performance in this period".
     // Actually, for "Pending Payments", let's include all pending purchases in the filtered period.
-    filteredTransactions.forEach(t => {
+    activeTransactions.forEach(t => {
       if (t.type === 'purchase' && t.status === 'pending') {
         pendingPay += parseFloat(t.amount || 0);
       }
@@ -2682,7 +2834,8 @@ const ReportView = ({ transactions, inventory, t }) => {
     const data = {};
     const isDaily = dateFilter === 'thisMonth' || dateFilter === 'lastMonth';
 
-    filteredTransactions.forEach(t => {
+    const activeTransactions = filteredTransactions.filter(t => !t.is_archived);
+    activeTransactions.forEach(t => {
       if (t.status !== 'completed') return;
 
       const date = new Date(t.date);
@@ -2707,7 +2860,8 @@ const ReportView = ({ transactions, inventory, t }) => {
 
   const getExpenseBreakdown = () => {
     const data = { Purchase: 0, Delivery: 0, Packaging: 0, Other: 0 };
-    filteredTransactions.forEach(t => {
+    const activeTransactions = filteredTransactions.filter(t => !t.is_archived);
+    activeTransactions.forEach(t => {
       if ((t.type === 'expense' || t.type === 'purchase') && t.status === 'completed') {
         const amount = parseFloat(t.amount || 0);
         if (t.type === 'purchase') data.Purchase += amount;
@@ -2724,7 +2878,8 @@ const ReportView = ({ transactions, inventory, t }) => {
 
   const getTopItems = () => {
     const items = {};
-    filteredTransactions.forEach(t => {
+    const activeTransactions = filteredTransactions.filter(t => !t.is_archived);
+    activeTransactions.forEach(t => {
       if (t.type === 'sale' && t.status === 'completed') {
         const item = inventory.find(i => i.id === t.item_id);
         const name = item ? item.name : 'Unknown';
@@ -2998,6 +3153,8 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Modals state
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
