@@ -571,6 +571,15 @@ const handleDelete = async (id) => {
 
 const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -2382,6 +2391,15 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
   const [isEditing, setIsEditing] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -2535,7 +2553,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
       setShowHistoryModal(true);
   };
 
-  const filteredInventory = inventory.filter(item => {
+  const filteredInventory = [...inventory].filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
       const isLowStock = parseInt(item.quantity) <= parseInt(item.low_stock_threshold);
       const isOutOfStock = parseInt(item.quantity) <= 0;
@@ -2544,6 +2562,35 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
       if (statusFilter === 'Stock Bas') matchesStatus = isLowStock && !isOutOfStock;
       if (statusFilter === 'Rupture') matchesStatus = isOutOfStock;
       return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    if (!sortConfig.key) return 0;
+    
+    let aVal = a[sortConfig.key];
+    let bVal = b[sortConfig.key];
+    
+    if (sortConfig.key === 'totalValue') {
+       aVal = a.buy_price * a.quantity;
+       bVal = b.buy_price * b.quantity;
+    } else if (sortConfig.key === 'status') {
+       const getStatusStr = (q, t) => parseInt(q) <= 0 ? 'c' : (parseInt(q) <= parseInt(t) ? 'b' : 'a');
+       aVal = getStatusStr(a.quantity, a.low_stock_threshold);
+       bVal = getStatusStr(b.quantity, b.low_stock_threshold);
+    }
+    
+    if (aVal === undefined || aVal === null) aVal = '';
+    if (bVal === undefined || bVal === null) bVal = '';
+
+    if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = bVal.toLowerCase();
+    } else {
+        aVal = parseFloat(aVal) || 0;
+        bVal = parseFloat(bVal) || 0;
+    }
+
+    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
   });
 
   return (
@@ -2677,13 +2724,13 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Produit & SKU</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Catégorie</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Fournisseur</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Quantité</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Prix d'Achat Moyen<br/><span className="text-[10px] text-gray-400 font-normal">(CMUP)</span></th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Valeur Totale</th>
-                <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase">Statut</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>Produit & SKU {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('category')}>Catégorie {sortConfig.key === 'category' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('supplier')}>Fournisseur {sortConfig.key === 'supplier' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('quantity')}>Quantité {sortConfig.key === 'quantity' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('buy_price')}>Prix d'Achat Moyen {sortConfig.key === 'buy_price' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}<br/><span className="text-[10px] text-gray-400 font-normal">(CMUP)</span></th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('totalValue')}>Valeur Totale {sortConfig.key === 'totalValue' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('status')}>Statut {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
@@ -3273,6 +3320,15 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
