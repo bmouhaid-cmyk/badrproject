@@ -1337,8 +1337,8 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    type: 'sale', // sale, purchase, expense
-    status: 'pending', // pending, completed, refused
+    type: 'sale',
+    status: 'pending',
     category: '',
     party: '',
     phone: '',
@@ -1349,7 +1349,8 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     notes: '',
     deliveryCost: '',
     packagingCost: '',
-    bankAccountId: ''
+    bankAccountId: '',
+    bankFees: ''
   });
 
   // Local state for selections
@@ -1466,7 +1467,8 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       notes: transaction.notes || '',
       deliveryCost: transaction.delivery_cost || '',
       packagingCost: transaction.packaging_cost || '',
-      bankAccountId: transaction.bank_account_id || ''
+      bankAccountId: transaction.bank_account_id || '',
+      bankFees: ''
     });
     setSelectedCompany(deliveryConfig.find(c => c.name === transaction.delivery_company)?.id || '');
     setSelectedPackaging(packagingConfig.find(p => p.cost === transaction.packaging_cost)?.id || '');
@@ -1552,7 +1554,21 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       data = updatedData;
       error = updateError;
     } else {
-      const { data: insertData, error: insertError } = await supabase.from('transactions').insert([dbTransaction]).select();
+      const txsToInsert = [dbTransaction];
+      if ((formData.type === 'purchase' || formData.type === 'expense') && formData.status === 'completed' && formData.bankFees && parseFloat(formData.bankFees) > 0) {
+          txsToInsert.push({
+              date: dbTransaction.date,
+              type: 'expense',
+              category: 'Frais Bancaires',
+              party: 'Banque',
+              amount: parseFloat(formData.bankFees),
+              status: 'completed',
+              bank_account_id: formData.bankAccountId,
+              notes: `Frais de paiement pour ${dbTransaction.party || 'Transaction'} (Achat/Dépense)`
+          });
+      }
+
+      const { data: insertData, error: insertError } = await supabase.from('transactions').insert(txsToInsert).select();
       data = insertData;
       error = insertError;
     }
@@ -1567,7 +1583,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       if (isEditing) {
         setTransactions(prev => prev.map(t => t.id === formData.id ? data[0] : t));
       } else {
-        setTransactions(prev => [data[0], ...prev]);
+        setTransactions(prev => [...data, ...prev]);
       }
 
       // --- APPLY NEW INVENTORY ---
@@ -1631,7 +1647,8 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
         amount: '',
         notes: '',
         deliveryCost: '',
-        packagingCost: ''
+        packagingCost: '',
+        bankFees: ''
       });
       setSelectedCompany('');
       setSelectedPackaging('');
@@ -1650,9 +1667,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
         return;
       }
 
-      const { error } = await supabase.from('transactions').delete().eq('id', id);
+      const { error } = await supabase.from('transactions').update({ status: 'deleted' }).eq('id', id);
       if (!error) {
-        setTransactions(prev => prev.filter(t => t.id !== id));
+        setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: 'deleted' } : t));
 
         // 2. Revert Inventory Logic
         // Ensure we parse quantity correctly as integer
@@ -1701,9 +1718,33 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
   const handleBulkDelete = async () => {
     if (window.confirm(t('deleteConfirm'))) {
-      const { error } = await supabase.from('transactions').delete().in('id', selectedTransactions);
+      // 1. Revert inventory for each if not already refused/deleted
+      for (const id of selectedTransactions) {
+          const tx = transactions.find(t => t.id === id);
+          if (tx && tx.item_id && tx.status !== 'refused' && tx.status !== 'deleted') {
+              const item = inventory.find(i => i.id === tx.item_id);
+              if (item) {
+                  let qtyChange = 0;
+                  const qty = parseInt(tx.quantity || 0);
+                  if (tx.type === 'sale') qtyChange = qty;
+                  else if (tx.type === 'purchase') qtyChange = -qty;
+                  
+                  if (qtyChange !== 0) {
+                      const newQty = parseInt(item.quantity) + qtyChange;
+                      let newInitial = parseInt(item.initial_quantity || item.quantity);
+                      if (tx.type === 'purchase') newInitial = Math.max(0, newInitial - qty);
+                      
+                      await supabase.from('inventory').update({ quantity: newQty, initial_quantity: newInitial }).eq('id', item.id);
+                      setInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: newQty, initial_quantity: newInitial } : i));
+                  }
+              }
+          }
+      }
+
+      // 2. Soft delete
+      const { error } = await supabase.from('transactions').update({ status: 'deleted' }).in('id', selectedTransactions);
       if (!error) {
-        setTransactions(prev => prev.filter(t => !selectedTransactions.includes(t.id)));
+        setTransactions(prev => prev.map(t => selectedTransactions.includes(t.id) ? { ...t, status: 'deleted' } : t));
         setSelectedTransactions([]);
       } else {
         alert('Error deleting transactions: ' + error.message);
@@ -1745,16 +1786,19 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
         let qtyChange = 0;
         const qty = parseInt(transaction.quantity || 0);
 
-        // Case A: Was Active (Pending/Completed) -> Becomes Refused (Inactive)
+        // Case A: Was Active (Pending/Completed) -> Becomes Inactive (Refused/Deleted)
         // Action: Add back to stock (Revert)
-        if (oldStatus !== 'refused' && newStatus === 'refused') {
+        const isOldInactive = oldStatus === 'refused' || oldStatus === 'deleted';
+        const isNewInactive = newStatus === 'refused' || newStatus === 'deleted';
+        
+        if (!isOldInactive && isNewInactive) {
           if (transaction.type === 'sale') qtyChange = qty; // Add back
           else if (transaction.type === 'purchase') qtyChange = -qty; // Remove (un-buy)
         }
 
-        // Case B: Was Refused (Inactive) -> Becomes Active (Pending/Completed)
+        // Case B: Was Inactive (Refused/Deleted) -> Becomes Active (Pending/Completed)
         // Action: Deduct from stock (Apply)
-        else if (oldStatus === 'refused' && newStatus !== 'refused') {
+        else if (isOldInactive && !isNewInactive) {
           if (transaction.type === 'sale') qtyChange = -qty; // Deduct
           else if (transaction.type === 'purchase') qtyChange = qty; // Add (buy)
         }
@@ -1769,10 +1813,10 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
           // Update initial_quantity for Purchase status changes
           if (transaction.type === 'purchase') {
             const currentInitial = parseInt(item.initial_quantity || item.quantity);
-            if (oldStatus !== 'refused' && newStatus === 'refused') {
+            if (!isOldInactive && isNewInactive) {
               // Refusing a purchase -> Remove from history
               updates.initial_quantity = Math.max(0, currentInitial - qty);
-            } else if (oldStatus === 'refused' && newStatus !== 'refused') {
+            } else if (isOldInactive && !isNewInactive) {
               // Un-refusing a purchase -> Add to history
               updates.initial_quantity = currentInitial + qty;
             }
@@ -2233,19 +2277,48 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Compte Bancaire / Caisse (Optionnel)</label>
-                <select
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
-                  value={formData.bankAccountId}
-                  onChange={e => setFormData({ ...formData, bankAccountId: e.target.value })}
-                >
-                  <option value="">-- Aucun compte --</option>
-                  {bankAccounts && bankAccounts.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
+              {(formData.type === 'purchase' || formData.type === 'expense') && formData.status === 'completed' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Compte Bancaire / Caisse</label>
+                    <select
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                      value={formData.bankAccountId}
+                      onChange={e => setFormData({ ...formData, bankAccountId: e.target.value })}
+                    >
+                      <option value="">-- Aucun compte --</option>
+                      {bankAccounts && bankAccounts.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Frais Bancaires (MAD)</label>
+                    <input
+                      type="number" step="0.01" min="0"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                      value={formData.bankFees || ''}
+                      onChange={e => setFormData({ ...formData, bankFees: e.target.value })}
+                      placeholder="Optionnel"
+                      disabled={isEditing}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Compte Bancaire / Caisse (Optionnel)</label>
+                  <select
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2 bg-white text-gray-900"
+                    value={formData.bankAccountId}
+                    onChange={e => setFormData({ ...formData, bankAccountId: e.target.value })}
+                  >
+                    <option value="">-- Aucun compte --</option>
+                    {bankAccounts && bankAccounts.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {formData.type === 'sale' && (
               <div>
@@ -3048,7 +3121,7 @@ const ReportView = ({ transactions, inventory, t }) => {
       if (t.type === 'sale') {
         if (t.status === 'completed') income += amount;
         if (t.status === 'pending') pendingCol += amount;
-      } else if (t.type === 'expense' || (t.type === 'purchase' && t.status === 'completed')) {
+      } else if ((t.type === 'expense' && t.status === 'completed') || (t.type === 'purchase' && t.status === 'completed')) {
         expenses += amount;
       }
     });
@@ -3424,7 +3497,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [paymentForm, setPaymentForm] = useState({ date: new Date().toISOString().split('T')[0], amount: '', bankAccountId: '', fees: '' });
 
   const getSupplierStats = (supplierName) => {
-    const supplierPurchases = transactions.filter(t => t.type === 'purchase' && t.party === supplierName);
+    const supplierPurchases = transactions.filter(t => t.type === 'purchase' && t.party === supplierName && (t.status === 'completed' || t.status === 'pending'));
     const supplierPayments = transactions.filter(t => t.type === 'expense' && t.category === 'Supplier Payment' && t.party === supplierName && t.status === 'completed');
     
     const totalPurchases = supplierPurchases.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
