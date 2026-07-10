@@ -574,6 +574,7 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
+  const uniqueCategories = [...new Set(inventory.map(i => i.category).filter(Boolean))];
   
   const archivedTransactions = transactions.filter(t => t.is_archived);
   
@@ -1455,7 +1456,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
       date: formData.date,
       type: formData.type,
       status: formData.status,
-      category: formData.type === 'expense' ? formData.category : null,
+      category: formData.item_id ? (inventory.find(i => i.id === formData.item_id)?.category || null) : (formData.type === 'expense' ? formData.category : null),
       party: formData.party,
       item_id: formData.type !== 'expense' ? formData.itemId : null,
       item_name: formData.type !== 'expense' ? (inventory.find(i => i.id === formData.itemId)?.name || '') : null,
@@ -2368,9 +2369,10 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
+  const uniqueCategories = [...new Set(inventory.map(i => i.category).filter(Boolean))];
   const [statusFilter, setStatusFilter] = useState('Tous les Statuts');
   const [formData, setFormData] = useState({
-    name: '', supplier: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5
+    name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5
   });
 
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
@@ -2405,6 +2407,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
       const dbItem = {
         name: formData.name,
         supplier: formData.supplier,
+        category: formData.category,
         quantity: parseInt(formData.quantity) || 0,
         buy_price: parseFloat(formData.buyPrice) || 0,
         sell_price: parseFloat(formData.sellPrice) || 0,
@@ -2440,13 +2443,13 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
       }
       if (error) { alert('Error saving item: ' + error.message); return; }
       setShowForm(false);
-      setFormData({ name: '', supplier: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 });
+      setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 });
       setIsEditing(false);
     } catch (err) { alert('An unexpected error occurred.'); }
   };
 
   const handleEdit = (item) => {
-    setFormData({ ...item, buyPrice: item.buy_price, sellPrice: item.sell_price, lowStockThreshold: item.low_stock_threshold, supplier: item.supplier || '' });
+    setFormData({ ...item, buyPrice: item.buy_price, sellPrice: item.sell_price, lowStockThreshold: item.low_stock_threshold, supplier: item.supplier || '', category: item.category || '' });
     setIsEditing(true);
     setShowForm(true);
   };
@@ -2593,7 +2596,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
           <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
             <Download size={16} /><span>Exporter</span>
           </button>
-          <button onClick={() => { setIsEditing(false); setFormData({ name: '', supplier: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 }); setShowForm(true); }} className="flex items-center space-x-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-lg font-medium text-sm whitespace-nowrap">
+          <button onClick={() => { setIsEditing(false); setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5 }); setShowForm(true); }} className="flex items-center space-x-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-lg font-medium text-sm whitespace-nowrap">
             <Plus size={16} /><span>Nouveau Produit / Variante</span>
           </button>
           <button onClick={() => openPurchaseModal()} className="flex items-center space-x-2 px-4 py-2 bg-[#f4a261] hover:bg-[#e76f51] text-white rounded-lg font-medium text-sm whitespace-nowrap">
@@ -2611,10 +2614,17 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
                 <label className="block text-sm font-medium text-gray-700">{t('itemName')}</label>
                 <input type="text" required className="mt-1 block w-full rounded-md border p-2" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
               </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('supplier')}</label>
-                <input type="text" list="supplier-list" className="w-full rounded-md border p-2" value={formData.supplier} onChange={e => setFormData({ ...formData, supplier: e.target.value })} placeholder={t('optional')} />
-                <datalist id="supplier-list">{suppliers.map(s => <option key={s.id} value={s.name} />)}</datalist>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('supplier')}</label>
+                  <input type="text" list="supplier-list" className="w-full rounded-md border p-2" value={formData.supplier} onChange={e => setFormData({ ...formData, supplier: e.target.value })} placeholder={t('optional')} />
+                  <datalist id="supplier-list">{suppliers.map(s => <option key={s.id} value={s.name} />)}</datalist>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
+                  <input type="text" list="category-list" className="w-full rounded-md border p-2" value={formData.category || ''} onChange={e => setFormData({ ...formData, category: e.target.value })} placeholder="Ex: tvbox, iptv" />
+                  <datalist id="category-list">{uniqueCategories.map(c => <option key={c} value={c} />)}</datalist>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -3240,6 +3250,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
+  const uniqueCategories = [...new Set(inventory.map(i => i.category).filter(Boolean))];
 
   // Modals state
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
