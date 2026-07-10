@@ -3347,7 +3347,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [purchaseForm, setPurchaseForm] = useState({ date: new Date().toISOString().split('T')[0], itemId: '', quantity: '', amount: '', status: 'pending', bankAccountId: '' });
   
   // Payment form state
-  const [paymentForm, setPaymentForm] = useState({ date: new Date().toISOString().split('T')[0], amount: '', bankAccountId: '' });
+  const [paymentForm, setPaymentForm] = useState({ date: new Date().toISOString().split('T')[0], amount: '', bankAccountId: '', fees: '' });
 
   const getSupplierStats = (supplierName) => {
     const supplierPurchases = transactions.filter(t => t.type === 'purchase' && t.party === supplierName);
@@ -3384,11 +3384,59 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
 
   const handleAddSupplier = async () => {
     if (newSupplier.name) {
-      const { data, error } = await supabase.from('suppliers').insert([newSupplier]).select();
-      if (data) {
-        setSuppliers([...suppliers, data[0]]);
-        setNewSupplier({ name: '', contact: '' });
-        setShowAddForm(false);
+      if (editingId) {
+        const originalSupplier = suppliers.find(s => s.id === editingId);
+        const originalStats = getSupplierStats(originalSupplier.name);
+        
+        const { data, error } = await supabase.from('suppliers').update({ name: newSupplier.name, contact: newSupplier.contact }).eq('id', editingId).select();
+        if (data) {
+          setSuppliers(suppliers.map(s => s.id === editingId ? data[0] : s));
+          
+          const diffPurchases = parseFloat(newSupplier.totalPurchases || 0) - originalStats.totalPurchases;
+          const diffPaid = parseFloat(newSupplier.totalPaid || 0) - originalStats.paid;
+          
+          let newTransactions = [];
+          if (diffPurchases !== 0) {
+              newTransactions.push({
+                  date: new Date().toISOString().split('T')[0],
+                  type: 'purchase',
+                  party: newSupplier.name,
+                  amount: diffPurchases,
+                  status: 'completed',
+                  category: 'Ajustement',
+                  notes: 'Ajustement manuel du total achats'
+              });
+          }
+          if (diffPaid !== 0) {
+              newTransactions.push({
+                  date: new Date().toISOString().split('T')[0],
+                  type: 'expense',
+                  category: 'Supplier Payment',
+                  party: newSupplier.name,
+                  amount: diffPaid,
+                  status: 'completed',
+                  notes: 'Ajustement manuel du total payé'
+              });
+          }
+          
+          if (newTransactions.length > 0) {
+              const { data: txData } = await supabase.from('transactions').insert(newTransactions).select();
+              if (txData) {
+                  setTransactions(prev => [...txData, ...prev]);
+              }
+          }
+          
+          setNewSupplier({ name: '', contact: '' });
+          setEditingId(null);
+          setShowAddForm(false);
+        }
+      } else {
+        const { data, error } = await supabase.from('suppliers').insert([{ name: newSupplier.name, contact: newSupplier.contact }]).select();
+        if (data) {
+          setSuppliers([...suppliers, data[0]]);
+          setNewSupplier({ name: '', contact: '' });
+          setShowAddForm(false);
+        }
       }
     }
   };
@@ -3450,22 +3498,39 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
         return;
     }
 
-    const dbTransaction = {
+    const transactionsToInsert = [];
+
+    // 1. Supplier payment
+    transactionsToInsert.push({
       date: paymentForm.date,
       type: 'expense',
       category: 'Supplier Payment',
       party: selectedSupplier,
-      amount: paymentForm.amount,
+      amount: parseFloat(paymentForm.amount),
       status: 'completed',
       bank_account_id: paymentForm.bankAccountId,
       notes: "Paiement Fournisseur partiel/complet"
-    };
+    });
 
-    const { data, error } = await supabase.from('transactions').insert([dbTransaction]).select();
+    // 2. Fees payment (if any)
+    if (paymentForm.fees && parseFloat(paymentForm.fees) > 0) {
+      transactionsToInsert.push({
+        date: paymentForm.date,
+        type: 'expense',
+        category: 'Frais Bancaires',
+        party: 'Banque',
+        amount: parseFloat(paymentForm.fees),
+        status: 'completed',
+        bank_account_id: paymentForm.bankAccountId,
+        notes: `Frais de paiement pour ${selectedSupplier}`
+      });
+    }
+
+    const { data, error } = await supabase.from('transactions').insert(transactionsToInsert).select();
     if (data) {
-      setTransactions(prev => [data[0], ...prev]);
+      setTransactions(prev => [...data, ...prev]);
       setShowPaymentModal(false);
-      setPaymentForm({ date: new Date().toISOString().split('T')[0], amount: '', bankAccountId: '' });
+      setPaymentForm({ date: new Date().toISOString().split('T')[0], amount: '', bankAccountId: '', fees: '' });
     } else if (error) {
       alert(error.message);
     }
@@ -3576,13 +3641,43 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
             value={newSupplier.contact}
             onChange={e => setNewSupplier({ ...newSupplier, contact: e.target.value })}
           />
-          <button
-            onClick={handleAddSupplier}
-            disabled={!newSupplier.name}
-            className="bg-blue-600 text-white px-8 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
-          >
-            {t('add')}
-          </button>
+          {editingId && (
+            <>
+              <input
+                type="number"
+                placeholder="Total Achats"
+                title="Modifier le Total des Achats"
+                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                value={newSupplier.totalPurchases}
+                onChange={e => setNewSupplier({ ...newSupplier, totalPurchases: e.target.value })}
+              />
+              <input
+                type="number"
+                placeholder="Total Payé"
+                title="Modifier le Total Payé"
+                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                value={newSupplier.totalPaid}
+                onChange={e => setNewSupplier({ ...newSupplier, totalPaid: e.target.value })}
+              />
+            </>
+          )}
+          <div className="flex space-x-2">
+              <button
+                onClick={handleAddSupplier}
+                disabled={!newSupplier.name}
+                className="bg-blue-600 text-white px-8 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+              >
+                {editingId ? 'Modifier' : t('add')}
+              </button>
+              {editingId && (
+                  <button
+                    onClick={() => { setShowAddForm(false); setEditingId(null); setNewSupplier({ name: '', contact: '' }); }}
+                    className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-200 whitespace-nowrap"
+                  >
+                    Annuler
+                  </button>
+              )}
+          </div>
         </div>
       )}
 
@@ -3614,7 +3709,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                         </div>
                         <div>
                           <div className="text-sm font-bold text-gray-900">{supplier.name}</div>
-                          <div className="text-xs text-gray-500">ID: #{pseudoId} | Créé: -</div>
+                          <div className="text-xs text-gray-500">ID: #{pseudoId} | Créé: {supplier.created_at ? new Date(supplier.created_at).toLocaleDateString('fr-FR') : '-'}</div>
                         </div>
                       </div>
                     </td>
@@ -3654,6 +3749,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                         <button onClick={() => { setSelectedSupplier(supplier.name); setShowPurchaseModal(true); }} className="text-gray-400 hover:text-orange-600 transition-colors" title="Nouvel Achat"><ShoppingCart size={18} /></button>
                         <button onClick={() => { setSelectedSupplier(supplier.name); setShowPaymentModal(true); }} className="text-gray-400 hover:text-purple-600 transition-colors" title="Paiement"><CreditCard size={18} /></button>
                         <button onClick={() => { setSelectedSupplier(supplier.name); setShowHistoryModal(true); }} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Historique"><History size={18} /></button>
+                        <button onClick={() => { setEditingId(supplier.id); setNewSupplier({ name: supplier.name, contact: supplier.contact || '', totalPurchases: stats.totalPurchases, totalPaid: stats.paid }); setShowAddForm(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-gray-400 hover:text-blue-600 transition-colors" title="Modifier"><Edit size={18} /></button>
                         <button onClick={() => handleDeleteSupplier(supplier.id)} className="text-gray-400 hover:text-red-600 transition-colors" title="Supprimer"><Trash2 size={18} /></button>
                       </div>
                     </td>
@@ -3738,9 +3834,15 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                 </select>
               </div>
               
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Montant à Payer (MAD)</label>
-                <input required type="number" step="0.01" min="0.01" className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.amount} onChange={(e) => setPaymentForm({...paymentForm, amount: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Montant à Payer (MAD)</label>
+                  <input required type="number" step="0.01" min="0.01" className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.amount} onChange={(e) => setPaymentForm({...paymentForm, amount: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
+                  <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.fees} onChange={(e) => setPaymentForm({...paymentForm, fees: e.target.value})} placeholder="Optionnel" />
+                </div>
               </div>
               
               <div>
