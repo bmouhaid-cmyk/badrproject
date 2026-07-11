@@ -3527,9 +3527,26 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState('');
   
+  // Releve state
+  const [releveStartDate, setReleveStartDate] = useState('');
+  const [releveEndDate, setReleveEndDate] = useState('');
+  const [releveSelectedIds, setReleveSelectedIds] = useState([]);
+
   // Purchase form state
-  const [purchaseForm, setPurchaseForm] = useState({ date: new Date().toISOString().split('T')[0], itemId: '', quantity: '', amount: '', status: 'pending', bankAccountId: '', fees: '' });
-  
+  const [purchaseForm, setPurchaseForm] = useState({ 
+    date: new Date().toISOString().split('T')[0], 
+    mode: 'detailed', 
+    itemId: '', 
+    quantity: '1', 
+    amount: '', 
+    status: 'pending', 
+    bankAccountId: '', 
+    fees: '',
+    detailedItems: [{ id: generateId(), itemId: '', quantity: '1', price: '' }],
+    category: '',
+    reference: '',
+    notes: ''
+  });
   // Payment form state
   const [paymentForm, setPaymentForm] = useState({ date: new Date().toISOString().split('T')[0], amount: '', bankAccountId: '', fees: '' });
 
@@ -3565,6 +3582,73 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   });
 
   const activeSuppliers = suppliers.length;
+
+  const getGroupedReleveTransactions = () => {
+    if (!selectedSupplier) return [];
+    let filtered = transactions.filter(t => t.party === selectedSupplier && (t.type === 'purchase' || (t.type === 'expense' && t.category === 'Supplier Payment')));
+    
+    if (releveStartDate) filtered = filtered.filter(t => t.date >= releveStartDate);
+    if (releveEndDate) filtered = filtered.filter(t => t.date <= releveEndDate);
+
+    const groups = {};
+    const result = [];
+    
+    filtered.forEach(t => {
+       if (t.type === 'purchase' && t.notes && t.notes.includes('Réf:')) {
+           const key = `${t.date}_${t.category}_${t.notes}`;
+           if (!groups[key]) {
+               groups[key] = {
+                   id: t.id,
+                   isGroup: true,
+                   date: t.date,
+                   type: 'purchase',
+                   category: t.category,
+                   notes: t.notes,
+                   items: [],
+                   totalAmount: 0,
+                   status: t.status
+               };
+               result.push(groups[key]);
+           }
+           groups[key].items.push({ name: t.item_name, quantity: t.quantity, amount: t.amount });
+           groups[key].totalAmount += parseFloat(t.amount || 0);
+       } else {
+           result.push({
+               ...t,
+               isGroup: false,
+               totalAmount: parseFloat(t.amount || 0)
+           });
+       }
+    });
+    
+    return result.sort((a, b) => new Date(b.date) - new Date(a.date));
+  };
+
+  const handleExportSelectionCSV = () => {
+    const groupedTx = getGroupedReleveTransactions();
+    const selectedTx = groupedTx.filter(t => releveSelectedIds.includes(t.id));
+    
+    if (selectedTx.length === 0) {
+        alert("Veuillez sélectionner au moins une transaction à exporter.");
+        return;
+    }
+    
+    const headers = ['Date', 'Type', 'Catégorie', 'Notes', 'Montant (MAD)'];
+    const csvContent = [
+        headers.join(','),
+        ...selectedTx.map(t => {
+            const typeStr = t.type === 'purchase' ? (t.isGroup ? 'Achat Détaillé' : 'Achat') : 'Paiement';
+            const notes = `"${(t.notes || '').replace(/"/g, '""')}"`;
+            return `${t.date},${typeStr},${t.category || ''},${notes},${t.totalAmount}`;
+        })
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Releve_${selectedSupplier}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
 
   const handleAddSupplier = async () => {
     if (newSupplier.name) {
@@ -3715,44 +3799,97 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
 
   const handlePurchaseSubmit = async (e) => {
     e.preventDefault();
-    const item = inventory.find(i => i.id === purchaseForm.itemId);
     
-    const dbTransaction = {
+    let transactionsToInsert = [];
+    let inventoryUpdates = [];
+    
+    const commonFields = {
       date: purchaseForm.date,
       type: 'purchase',
       party: selectedSupplier,
-      item_id: purchaseForm.itemId,
-      item_name: item ? item.name : '',
-      quantity: purchaseForm.quantity,
-      amount: purchaseForm.amount,
       status: purchaseForm.status,
-      bank_account_id: purchaseForm.status === 'completed' ? (purchaseForm.bankAccountId || null) : null
+      bank_account_id: purchaseForm.status === 'completed' ? (purchaseForm.bankAccountId || null) : null,
+      category: purchaseForm.mode === 'detailed' ? purchaseForm.category : '',
+      notes: purchaseForm.mode === 'detailed' ? (purchaseForm.reference ? `Réf: ${purchaseForm.reference} | ${purchaseForm.notes}` : purchaseForm.notes) : ''
     };
 
-    const transactionsToInsert = [dbTransaction];
-    if (purchaseForm.status === 'completed' && purchaseForm.fees && parseFloat(purchaseForm.fees) > 0) {
-        transactionsToInsert.push({
-            date: purchaseForm.date,
-            type: 'expense',
-            category: 'Frais Bancaires',
-            party: 'Banque',
-            amount: parseFloat(purchaseForm.fees),
-            status: 'completed',
-            bank_account_id: purchaseForm.bankAccountId,
-            notes: `Frais de paiement pour ${selectedSupplier} (Nouvel Achat)`
-        });
+    if (purchaseForm.mode === 'detailed') {
+      purchaseForm.detailedItems.forEach(dItem => {
+         const item = inventory.find(i => i.id === dItem.itemId);
+         const lineAmount = parseFloat(dItem.price || 0) * parseInt(dItem.quantity || 1);
+         
+         if (item) {
+             transactionsToInsert.push({
+               ...commonFields,
+               item_id: dItem.itemId,
+               item_name: item.name,
+               quantity: parseInt(dItem.quantity || 1),
+               amount: lineAmount
+             });
+             
+             inventoryUpdates.push({
+                 item: item,
+                 qtyToAdd: parseInt(dItem.quantity || 1),
+                 lineAmount: lineAmount
+             });
+         }
+      });
+      
+      if (purchaseForm.status === 'completed' && purchaseForm.fees && parseFloat(purchaseForm.fees) > 0) {
+          transactionsToInsert.push({
+              date: purchaseForm.date,
+              type: 'expense',
+              category: 'Frais Bancaires',
+              party: 'Banque',
+              amount: parseFloat(purchaseForm.fees),
+              status: 'completed',
+              bank_account_id: purchaseForm.bankAccountId,
+              notes: `Frais de paiement pour ${selectedSupplier} (Nouvel Achat Détaillé)`
+          });
+      }
+    } else {
+        const item = inventory.find(i => i.id === purchaseForm.itemId);
+        const dbTransaction = {
+          ...commonFields,
+          item_id: purchaseForm.itemId,
+          item_name: item ? item.name : '',
+          quantity: purchaseForm.quantity,
+          amount: purchaseForm.amount
+        };
+        transactionsToInsert.push(dbTransaction);
+        
+        if (item) {
+            inventoryUpdates.push({
+                item: item,
+                qtyToAdd: parseInt(purchaseForm.quantity || 0),
+                lineAmount: parseFloat(purchaseForm.amount || 0)
+            });
+        }
+        
+        if (purchaseForm.status === 'completed' && purchaseForm.fees && parseFloat(purchaseForm.fees) > 0) {
+            transactionsToInsert.push({
+                date: purchaseForm.date,
+                type: 'expense',
+                category: 'Frais Bancaires',
+                party: 'Banque',
+                amount: parseFloat(purchaseForm.fees),
+                status: 'completed',
+                bank_account_id: purchaseForm.bankAccountId,
+                notes: `Frais de paiement pour ${selectedSupplier} (Nouvel Achat)`
+            });
+        }
     }
 
     const { data, error } = await supabase.from('transactions').insert(transactionsToInsert).select();
     if (data) {
-      setTransactions(prev => [data[0], ...prev]);
+      setTransactions(prev => [...data, ...prev]);
       
       // Update inventory (WAC logic)
-      if (item) {
+      for (const update of inventoryUpdates) {
+          const item = update.item;
           const currentQty = parseInt(item.quantity || 0);
-          const newQty = parseInt(purchaseForm.quantity);
+          const newQty = update.qtyToAdd;
           const currentBuyPrice = parseFloat(item.buy_price || 0);
-          const purchasePrice = parseFloat(purchaseForm.amount) / newQty; // Assuming amount is total amount
           
           const totalValue = (currentQty * currentBuyPrice) + parseFloat(purchaseForm.amount);
           const totalQty = currentQty + newQty;
@@ -4045,60 +4182,187 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
       
       {/* 1. New Purchase Modal */}
       {showPurchaseModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl relative">
-            <button onClick={() => setShowPurchaseModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={20} /></button>
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><ShoppingCart size={20} className="text-orange-500" /> Nouvel Achat</h3>
-            <form onSubmit={handlePurchaseSubmit} className="space-y-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl relative text-gray-800 my-8">
+            <button type="button" onClick={() => setShowPurchaseModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={24} /></button>
+            <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">Nouvel Achat <ShoppingCart size={24} className="text-orange-500" /></h3>
+            <form onSubmit={handlePurchaseSubmit} className="space-y-6">
+              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur</label>
-                <select required className="w-full border-gray-300 rounded-lg p-2 border" value={selectedSupplier} onChange={(e) => setSelectedSupplier(e.target.value)}>
-                    <option value="">Sélectionner un fournisseur</option>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">SÉLECTIONNER FOURNISSEUR</label>
+                <select required className="w-full bg-white border border-gray-300 rounded-lg p-3 text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none" value={selectedSupplier} onChange={(e) => setSelectedSupplier(e.target.value)}>
+                    <option value="">Sélectionner fournisseur...</option>
                     {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Produit</label>
-                <select required className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.itemId} onChange={(e) => setPurchaseForm({...purchaseForm, itemId: e.target.value})}>
-                    <option value="">Sélectionner un produit</option>
-                    {inventory.map(i => <option key={i.id} value={i.id}>{i.name} (Stock: {i.quantity})</option>)}
-                </select>
+
+              <div className="flex items-center gap-6 p-4 rounded-xl border border-gray-200 bg-gray-50">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" className="form-radio text-orange-500 focus:ring-orange-500 bg-white border-gray-300" checked={purchaseForm.mode === 'direct'} onChange={() => setPurchaseForm({...purchaseForm, mode: 'direct'})} />
+                  <span className="text-gray-900 font-medium">Total Direct</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" className="form-radio text-purple-600 focus:ring-purple-600 bg-white border-gray-300" checked={purchaseForm.mode === 'detailed'} onChange={() => setPurchaseForm({...purchaseForm, mode: 'detailed'})} />
+                  <span className="text-gray-900 font-medium">Détaillé</span>
+                </label>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              {purchaseForm.mode === 'direct' ? (
+                <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantité</label>
-                    <input required type="number" min="1" className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({...purchaseForm, quantity: e.target.value})} />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Produit</label>
+                    <select required className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.itemId} onChange={(e) => setPurchaseForm({...purchaseForm, itemId: e.target.value})}>
+                        <option value="">Sélectionner un produit</option>
+                        {inventory.map(i => <option key={i.id} value={i.id}>{i.name} (Stock: {i.quantity})</option>)}
+                    </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Montant (MAD)</label>
-                    <input required type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.amount} onChange={(e) => setPurchaseForm({...purchaseForm, amount: e.target.value})} />
-                  </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
-                <select className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.status} onChange={(e) => setPurchaseForm({...purchaseForm, status: e.target.value})}>
-                    <option value="pending">NON PAYÉ (Crédit)</option>
-                    <option value="completed">PAYÉ (Immédiat)</option>
-                </select>
-              </div>
-              {purchaseForm.status === 'completed' && (
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
-                      <select required className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.bankAccountId} onChange={(e) => setPurchaseForm({...purchaseForm, bankAccountId: e.target.value})}>
-                          <option value="">Sélectionner un compte</option>
-                          {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
-                      <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border" value={purchaseForm.fees} onChange={(e) => setPurchaseForm({...purchaseForm, fees: e.target.value})} placeholder="Optionnel" />
-                    </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantité</label>
+                        <input required type="number" min="1" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({...purchaseForm, quantity: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Total Montant (MAD)</label>
+                        <input required type="number" step="0.01" min="0" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.amount} onChange={(e) => setPurchaseForm({...purchaseForm, amount: e.target.value})} />
+                      </div>
                   </div>
+                </div>
+              ) : (
+                <div className="space-y-4 border border-gray-300 border-dashed rounded-xl p-4 bg-gray-50/50">
+                  {purchaseForm.detailedItems.map((dItem, index) => (
+                    <div key={dItem.id} className="flex gap-2 items-start">
+                      <div className="flex-1">
+                        <select required className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm text-gray-900" value={dItem.itemId} onChange={(e) => {
+                          const newItems = [...purchaseForm.detailedItems];
+                          newItems[index].itemId = e.target.value;
+                          setPurchaseForm({...purchaseForm, detailedItems: newItems});
+                        }}>
+                            <option value="">Produit...</option>
+                            {inventory.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="w-20">
+                        <input required type="number" min="1" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm text-gray-900 text-center" value={dItem.quantity} onChange={(e) => {
+                          const newItems = [...purchaseForm.detailedItems];
+                          newItems[index].quantity = e.target.value;
+                          setPurchaseForm({...purchaseForm, detailedItems: newItems});
+                        }} />
+                      </div>
+                      <div className="w-28">
+                        <input required type="number" step="0.01" min="0" placeholder="Prix" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm text-gray-900" value={dItem.price} onChange={(e) => {
+                          const newItems = [...purchaseForm.detailedItems];
+                          newItems[index].price = e.target.value;
+                          setPurchaseForm({...purchaseForm, detailedItems: newItems});
+                        }} />
+                      </div>
+                      <button type="button" onClick={() => {
+                        if (purchaseForm.detailedItems.length > 1) {
+                          setPurchaseForm({...purchaseForm, detailedItems: purchaseForm.detailedItems.filter(i => i.id !== dItem.id)});
+                        }
+                      }} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"><X size={18} /></button>
+                    </div>
+                  ))}
+                  
+                  <button type="button" onClick={() => {
+                    setPurchaseForm({...purchaseForm, detailedItems: [...purchaseForm.detailedItems, { id: generateId(), itemId: '', quantity: '1', price: '' }]});
+                  }} className="w-full py-2 border border-purple-300 border-dashed rounded-lg text-purple-600 text-sm font-medium hover:bg-purple-50 transition-colors">
+                    + Ajouter une ligne
+                  </button>
+
+                  <div className="bg-white border border-gray-200 rounded-lg p-4 flex justify-between items-center mt-4 border-l-4 border-l-orange-500 shadow-sm">
+                    <span className="text-gray-500 text-sm font-semibold uppercase tracking-wider">SOMME CALCULÉE:</span>
+                    <span className="text-orange-600 font-mono text-xl font-bold">
+                      {purchaseForm.detailedItems.reduce((sum, item) => sum + (parseFloat(item.price || 0) * parseInt(item.quantity || 1)), 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+                    </span>
+                  </div>
+                </div>
               )}
-              <div className="pt-4 flex justify-end gap-3">
-                  <button type="button" onClick={() => setShowPurchaseModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
-                  <button type="submit" className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium shadow-sm">Valider l'Achat</button>
+
+              {purchaseForm.mode === 'detailed' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DÉSIGNATION / PRODUITS</label>
+                    <input type="text" placeholder="Ex: pc, ecran (Entrée...)" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.category} onChange={(e) => setPurchaseForm({...purchaseForm, category: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">MONTANT TOTALE</label>
+                    <input readOnly type="number" step="0.01" className="w-full bg-gray-100 border border-gray-300 rounded-lg p-2 text-gray-500 text-sm cursor-not-allowed" value={purchaseForm.detailedItems.reduce((sum, item) => sum + (parseFloat(item.price || 0) * parseInt(item.quantity || 1)), 0).toFixed(2)} />
+                  </div>
+                </div>
+              )}
+
+              {purchaseForm.mode === 'detailed' && selectedSupplier && (
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2">
+                  <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>Balance Actuelle: {getSupplierStats(selectedSupplier).balance.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-orange-600">+{purchaseForm.detailedItems.reduce((sum, item) => sum + (parseFloat(item.price || 0) * parseInt(item.quantity || 1)), 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between items-center font-bold border-t border-gray-300 pt-2 text-gray-900">
+                    <span>Projection Finale:</span>
+                    <span>
+                      {(getSupplierStats(selectedSupplier).balance + purchaseForm.detailedItems.reduce((sum, item) => sum + (parseFloat(item.price || 0) * parseInt(item.quantity || 1)), 0)).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DATE OPÉRATION</label>
+                  <input required type="date" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.date} onChange={(e) => setPurchaseForm({...purchaseForm, date: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">CATÉGORIE</label>
+                  <select className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.category} onChange={(e) => setPurchaseForm({...purchaseForm, category: e.target.value})}>
+                      <option value="">-- Sélectionnez --</option>
+                      {uniqueCategories.map((c, i) => <option key={i} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">RÉF. BON / FACTURE</label>
+                  <input type="text" placeholder="N° Bon..." className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.reference} onChange={(e) => setPurchaseForm({...purchaseForm, reference: e.target.value})} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">OBSERVATIONS / NOTES <Edit size={14} className="text-gray-400" /></label>
+                <textarea rows="2" placeholder="Notes additionnelles..." className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.notes} onChange={(e) => setPurchaseForm({...purchaseForm, notes: e.target.value})} />
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">STATUT DU PAIEMENT</label>
+                  <select className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.status} onChange={(e) => setPurchaseForm({...purchaseForm, status: e.target.value})}>
+                      <option value="pending">NON PAYÉ (Crédit)</option>
+                      <option value="completed">PAYÉ (Immédiat)</option>
+                  </select>
+                </div>
+                {purchaseForm.status === 'completed' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Compte Bancaire / Caisse</label>
+                        <select required className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.bankAccountId} onChange={(e) => setPurchaseForm({...purchaseForm, bankAccountId: e.target.value})}>
+                            <option value="">Sélectionner un compte</option>
+                            {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Frais Bancaires (MAD)</label>
+                        <input type="number" step="0.01" min="0" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.fees} onChange={(e) => setPurchaseForm({...purchaseForm, fees: e.target.value})} placeholder="Optionnel" />
+                      </div>
+                    </div>
+                )}
+              </div>
+
+              {purchaseForm.mode === 'detailed' && (
+                <div className="text-xs text-orange-600 flex items-center gap-1 bg-orange-50 p-2 rounded border border-orange-200">
+                  DÉTAILS SYSTÈME (AUTO) 🤖: Ce formulaire créera plusieurs transactions groupées.
+                </div>
+              )}
+
+              <div className="pt-6 flex justify-end gap-3 border-t border-gray-200">
+                  <button type="button" onClick={() => setShowPurchaseModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Annuler</button>
+                  <button type="submit" className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium shadow-sm transition-colors">Valider l'Achat</button>
               </div>
             </form>
           </div>
@@ -4148,39 +4412,130 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
         </div>
       )}
 
-      {/* 3. History Modal */}
+      {/* 3. History Modal (Relevé) */}
       {showHistoryModal && selectedSupplier && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-4xl w-full shadow-2xl relative max-h-[80vh] flex flex-col">
-            <button onClick={() => setShowHistoryModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={20} /></button>
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><History size={20} className="text-indigo-500" /> Historique: {selectedSupplier}</h3>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-6xl w-full shadow-2xl relative max-h-[90vh] flex flex-col my-8 border border-gray-200">
+            <button onClick={() => setShowHistoryModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
+            <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">Relevé : {selectedSupplier.toUpperCase()}</h3>
             
-            <div className="overflow-y-auto flex-1 border rounded-lg">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Détails</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Montant</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-100">
-                        {transactions.filter(t => t.party === selectedSupplier && (t.type === 'purchase' || (t.type === 'expense' && t.category === 'Supplier Payment'))).map(t => (
-                            <tr key={t.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                    {t.type === 'purchase' 
-                                        ? <span className="text-orange-600 font-medium text-sm">Achat {t.status === 'pending' ? '(Non Payé)' : '(Payé)'}</span>
-                                        : <span className="text-purple-600 font-medium text-sm">Paiement Partiel/Total</span>
-                                    }
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{t.item_name || t.notes || '-'}</td>
-                                <td className="px-4 py-3 whitespace-nowrap text-right font-medium">MAD {parseFloat(t.amount || 0).toLocaleString()}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            {/* Filters */}
+            <div className="flex flex-wrap items-end gap-4 mb-6 p-4 border border-gray-200 rounded-xl bg-gray-50">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DATE DÉBUT</label>
+                  <input type="date" className="bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:ring-1 focus:ring-gray-300" value={releveStartDate} onChange={e => setReleveStartDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DATE FIN</label>
+                  <input type="date" className="bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:ring-1 focus:ring-gray-300" value={releveEndDate} onChange={e => setReleveEndDate(e.target.value)} />
+                </div>
+                <button className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-medium hover:bg-indigo-100 transition-colors border border-indigo-100">
+                    <Filter size={16} /> Filtrer
+                </button>
+            </div>
+
+            {/* Selection actions */}
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6 p-4 border border-indigo-200 rounded-xl bg-indigo-50/50">
+                <div className="flex items-center gap-4">
+                    <button onClick={() => {
+                        const allIds = getGroupedReleveTransactions().map(t => t.id);
+                        setReleveSelectedIds(releveSelectedIds.length === allIds.length ? [] : allIds);
+                    }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Tout Sélectionner</button>
+                    <button onClick={() => {
+                        const achatIds = getGroupedReleveTransactions().filter(t => t.type === 'purchase').map(t => t.id);
+                        setReleveSelectedIds(achatIds);
+                    }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Sélectionner Achats</button>
+                    <button onClick={() => {
+                        const paiementIds = getGroupedReleveTransactions().filter(t => t.type === 'expense').map(t => t.id);
+                        setReleveSelectedIds(paiementIds);
+                    }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Sélectionner Paiements</button>
+                </div>
+                <div className="flex items-center gap-4">
+                    <span className="text-gray-600 font-medium text-sm border-r border-gray-300 pr-4">{releveSelectedIds.length} transaction(s) sélectionnée(s)</span>
+                    <button onClick={handleExportSelectionCSV} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 shadow-sm transition-colors">
+                        <Download size={16} /> Exporter la Sélection
+                    </button>
+                    <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 shadow-sm transition-colors">
+                        <Printer size={16} /> Imprimer (PDF)
+                    </button>
+                </div>
+            </div>
+
+            {/* Two columns layout */}
+            <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4">
+                {/* Achats Column */}
+                <div className="space-y-4">
+                    <h4 className="text-lg font-bold text-gray-800 bg-gray-50 p-3 rounded-lg border border-gray-200">Achats</h4>
+                    {getGroupedReleveTransactions().filter(t => t.type === 'purchase').map(t => (
+                        <div key={t.id} className={`relative p-4 rounded-xl border-l-4 border-l-orange-500 bg-white border border-gray-200 shadow-sm transition-colors ${releveSelectedIds.includes(t.id) ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : ''}`}>
+                            <div className="absolute top-4 left-4">
+                                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 bg-white text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0" checked={releveSelectedIds.includes(t.id)} onChange={(e) => {
+                                    if (e.target.checked) setReleveSelectedIds([...releveSelectedIds, t.id]);
+                                    else setReleveSelectedIds(releveSelectedIds.filter(id => id !== t.id));
+                                }} />
+                            </div>
+                            <div className="ml-8 flex justify-between items-start">
+                                <div>
+                                    <h5 className="text-gray-900 font-bold text-lg leading-tight">{t.isGroup ? 'Achat Détaillé' : 'Achat'}</h5>
+                                    <span className="text-gray-500 text-sm">{new Date(t.date).toLocaleDateString('fr-FR')}</span>
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                    <span className="px-3 py-1 bg-orange-100 text-orange-700 border border-orange-200 rounded-full text-xs font-bold tracking-wider">ACHAT</span>
+                                    <div className="flex gap-2 text-gray-400">
+                                        <button className="hover:text-gray-700 p-1"><Printer size={16} /></button>
+                                        <button className="hover:text-indigo-600 p-1"><Edit size={16} /></button>
+                                        <button className="hover:text-red-500 p-1"><Trash2 size={16} /></button>
+                                    </div>
+                                    <span className="text-orange-600 font-bold text-xl font-mono mt-1">-{t.totalAmount.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} MAD</span>
+                                </div>
+                            </div>
+                            <div className="ml-8 mt-4 space-y-2 text-sm border-t border-gray-100 pt-3">
+                                <div className="text-gray-600"><span className="text-gray-400 mr-2">🏷️</span><strong className="text-gray-800 font-medium">Catégorie:</strong> {t.category}</div>
+                                <div className="text-gray-600"><span className="text-gray-400 mr-2">✍️</span><strong className="text-gray-800 font-medium">Observations / Notes:</strong> {t.notes || 'Aucune observation'}</div>
+                                {t.isGroup ? (
+                                    <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong> 
+                                        [Items: {t.items.map(item => `${item.quantity}x ${item.name} (Prix unitaire : ${(item.amount/item.quantity).toLocaleString('fr-FR', {minimumFractionDigits: 2})} MAD)`).join(' | ')} | Total Global : {t.totalAmount.toLocaleString('fr-FR', {minimumFractionDigits: 2})} MAD]
+                                    </div>
+                                ) : (
+                                    <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong> [Produit: {t.item_name} | Qté: {t.quantity}]</div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Paiements Column */}
+                <div className="space-y-4">
+                    <h4 className="text-lg font-bold text-gray-800 bg-gray-50 p-3 rounded-lg border border-gray-200">Paiements</h4>
+                    {getGroupedReleveTransactions().filter(t => t.type === 'expense').map(t => (
+                        <div key={t.id} className={`relative p-4 rounded-xl border-l-4 border-l-purple-500 bg-white border border-gray-200 shadow-sm transition-colors ${releveSelectedIds.includes(t.id) ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : ''}`}>
+                            <div className="absolute top-4 left-4">
+                                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 bg-white text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0" checked={releveSelectedIds.includes(t.id)} onChange={(e) => {
+                                    if (e.target.checked) setReleveSelectedIds([...releveSelectedIds, t.id]);
+                                    else setReleveSelectedIds(releveSelectedIds.filter(id => id !== t.id));
+                                }} />
+                            </div>
+                            <div className="ml-8 flex justify-between items-start">
+                                <div>
+                                    <h5 className="text-gray-900 font-bold text-lg leading-tight">Installment / Acompte</h5>
+                                    <span className="text-gray-500 text-sm">{new Date(t.date).toLocaleDateString('fr-FR')}</span>
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                    <span className="px-3 py-1 bg-purple-100 text-purple-700 border border-purple-200 rounded-full text-xs font-bold tracking-wider">CONFIRMÉ</span>
+                                    <div className="flex gap-2 text-gray-400">
+                                        <button className="hover:text-indigo-600 p-1"><Edit size={16} /></button>
+                                        <button className="hover:text-red-500 p-1"><Trash2 size={16} /></button>
+                                    </div>
+                                    <span className="text-purple-600 font-bold text-xl font-mono mt-1">+{t.totalAmount.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} MAD</span>
+                                </div>
+                            </div>
+                            <div className="ml-8 mt-4 space-y-2 text-sm border-t border-gray-100 pt-3">
+                                <div className="text-gray-600"><span className="text-gray-400 mr-2">✍️</span><strong className="text-gray-800 font-medium">Observations / Notes:</strong> {t.notes || 'Aucune observation'}</div>
+                                <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong> ---</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
           </div>
         </div>
