@@ -3,6 +3,15 @@ import { useReactToPrint } from 'react-to-print';
 import * as XLSX from 'xlsx';
 import { supabase } from './supabase';
 import {
+  DigitalDashboard,
+  DigitalAbonnementsManager,
+  DigitalInventoryManager,
+  DigitalTreasuryManager,
+  DigitalTransactionsManager,
+  DigitalSuppliersManager,
+  DigitalReportView
+} from './DigitalModules';
+import {
   LayoutDashboard,
   ArrowRightLeft,
   Package,
@@ -208,6 +217,11 @@ const translations = {
     thisYear: 'Cette Année',
     allTime: 'Tout le temps',
     monthlyTrend: 'Tendance Mensuelle',
+    digital_dashboard: 'Tableau de bord Digital',
+    digital_abonnements: 'Abonnements',
+    digital_inventory: 'Produits Digitaux',
+    digital_treasury: 'Trésorerie Digitale',
+    digital_transactions: 'Transactions Digitales',
     expenseBreakdown: 'Répartition des Dépenses',
     topItems: 'Meilleurs Produits',
     revenue: 'Chiffre d\'affaires',
@@ -516,34 +530,6 @@ const handleDelete = async (id) => {
                 </select>
               </div>
               
-              {!isEditing && formData.quantity > 0 && (
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4 space-y-4">
-                  <h5 className="font-medium text-gray-800 flex items-center gap-2"><CreditCard size={18} className="text-blue-500" /> Détails du Paiement (Stock Initial)</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
-                    <select className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.paymentStatus} onChange={(e) => setFormData({...formData, paymentStatus: e.target.value})}>
-                        <option value="pending">NON PAYÉ (Crédit)</option>
-                        <option value="completed">PAYÉ (Immédiat)</option>
-                    </select>
-                  </div>
-                  {formData.paymentStatus === 'completed' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
-                        <select required className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankAccountId} onChange={(e) => setFormData({...formData, bankAccountId: e.target.value})}>
-                            <option value="">Sélectionner un compte</option>
-                            {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
-                        <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankFees} onChange={(e) => setFormData({...formData, bankFees: e.target.value})} placeholder="Optionnel" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   type="button"
@@ -817,6 +803,7 @@ function App() {
   const [deliveryConfig, setDeliveryConfig] = useState([]);
   const [packagingConfig, setPackagingConfig] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [digitalSuppliers, setDigitalSuppliers] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [view, setView] = useState(() => localStorage.getItem('mabox_view') || 'dashboard'); // dashboard, transactions, inventory, reports, settings, users, treasury
   const [language, setLanguage] = useState(() => localStorage.getItem('mabox_language') || 'en'); // en, fr, ar
@@ -825,6 +812,13 @@ function App() {
     const saved = localStorage.getItem('mabox_user');
     return saved ? JSON.parse(saved) : null;
   });
+  
+  // Digital ERP State
+  const [erpMode, setErpMode] = useState(() => localStorage.getItem('mabox_erpMode') || 'physical'); // 'physical' or 'digital'
+  const [digitalInventory, setDigitalInventory] = useState([]);
+  const [digitalTransactions, setDigitalTransactions] = useState([]);
+  const [subscriptions, setSubscriptions] = useState([]);
+
   const [error, setError] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -832,6 +826,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('mabox_view', view);
   }, [view]);
+
+  useEffect(() => {
+    localStorage.setItem('mabox_erpMode', erpMode);
+  }, [erpMode]);
 
   useEffect(() => {
     localStorage.setItem('mabox_language', language);
@@ -854,10 +852,17 @@ function App() {
         // Filter out deleted items from initial fetch
         setInventory(inventoryData.filter(i => !i.is_deleted));
 
-        // Fetch Supplierst
+        // Fetch Transactions
         const { data: txData, error: txError } = await supabase.from('transactions').select('*').order('date', { ascending: false });
         if (txError) throw txError;
         if (txData) setTransactions(txData.filter(t => t.status !== 'deleted'));
+
+        const { data: digiInvData } = await supabase.from('digital_inventory').select('*').order('created_at', { ascending: false });
+        if (digiInvData) setDigitalInventory(digiInvData);
+
+        const { data: digiSupData } = await supabase.from('digital_suppliers').select('*').order('created_at', { ascending: false });
+        if (digiSupData) setDigitalSuppliers(digiSupData);
+
 
         const { data: userData, error: userError } = await supabase.from('app_users').select('*');
         if (userError) throw userError;
@@ -895,6 +900,19 @@ function App() {
         if (bankError) console.error('Error fetching bank accounts:', bankError);
         if (bankData) setBankAccounts(bankData.filter(b => !b.is_deleted));
 
+        // Fetch Digital ERP Data
+        const { data: digInvData, error: digInvErr } = await supabase.from('digital_inventory').select('*');
+        if (digInvErr) console.error('Error digital inventory:', digInvErr);
+        if (digInvData) setDigitalInventory(digInvData.filter(i => !i.is_deleted));
+
+        const { data: digTxData, error: digTxErr } = await supabase.from('digital_transactions').select('*').order('date', { ascending: false });
+        if (digTxErr) console.error('Error digital transactions:', digTxErr);
+        if (digTxData) setDigitalTransactions(digTxData.filter(t => t.status !== 'deleted'));
+
+        const { data: subData, error: subErr } = await supabase.from('subscriptions').select('*').order('created_at', { ascending: false });
+        if (subErr) console.error('Error subscriptions:', subErr);
+        if (subData) setSubscriptions(subData);
+
       } catch (err) {
         console.error('Error fetching data:', err);
         setError('Failed to load data. Please check your connection and configuration.');
@@ -929,10 +947,35 @@ function App() {
       if (payload.eventType === 'DELETE') setBankAccounts(prev => prev.filter(b => String(b.id) !== String(payload.old.id)));
     }).subscribe();
 
+    // Digital Subs
+    const digInvSub = supabase.channel('digital_inventory').on('postgres_changes', { event: '*', schema: 'public', table: 'digital_inventory' }, payload => {
+      if (payload.eventType === 'INSERT') setDigitalInventory(prev => [...prev, payload.new]);
+      if (payload.eventType === 'UPDATE') setDigitalInventory(prev => prev.map(i => String(i.id) === String(payload.new.id) ? payload.new : i));
+      if (payload.eventType === 'DELETE') setDigitalInventory(prev => prev.filter(i => String(i.id) !== String(payload.old.id)));
+    }).subscribe();
+
+    const digTxSub = supabase.channel('digital_transactions').on('postgres_changes', { event: '*', schema: 'public', table: 'digital_transactions' }, payload => {
+      if (payload.eventType === 'INSERT') setDigitalTransactions(prev => [payload.new, ...prev]);
+      if (payload.eventType === 'DELETE') setDigitalTransactions(prev => prev.filter(t => t.id !== payload.old.id));
+      if (payload.eventType === 'UPDATE') {
+        if (payload.new.status === 'deleted') setDigitalTransactions(prev => prev.filter(t => String(t.id) !== String(payload.new.id)));
+        else setDigitalTransactions(prev => prev.map(t => String(t.id) === String(payload.new.id) ? payload.new : t));
+      }
+    }).subscribe();
+
+    const subSub = supabase.channel('subscriptions').on('postgres_changes', { event: '*', schema: 'public', table: 'subscriptions' }, payload => {
+      if (payload.eventType === 'INSERT') setSubscriptions(prev => [payload.new, ...prev]);
+      if (payload.eventType === 'DELETE') setSubscriptions(prev => prev.filter(t => t.id !== payload.old.id));
+      if (payload.eventType === 'UPDATE') setSubscriptions(prev => prev.map(t => String(t.id) === String(payload.new.id) ? payload.new : t));
+    }).subscribe();
+
     return () => {
       supabase.removeChannel(invSub);
       supabase.removeChannel(txSub);
       supabase.removeChannel(bankSub);
+      supabase.removeChannel(digInvSub);
+      supabase.removeChannel(digTxSub);
+      supabase.removeChannel(subSub);
     };
   }, []);
 
@@ -1029,26 +1072,56 @@ function App() {
         ${isSidebarOpen ? 'translate-x-0' : (isRTL ? 'translate-x-full' : '-translate-x-full')} md:translate-x-0
         w-64 bg-white border-r border-gray-200 flex flex-col
       `}>
-        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <LayoutDashboard className="text-white" size={24} />
+        <div className="p-4 border-b border-gray-200 flex flex-col space-y-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-lg ${erpMode === 'physical' ? 'bg-blue-600' : 'bg-purple-600'}`}>
+                <LayoutDashboard className="text-white" size={24} />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-800">Mabox.ma</h1>
             </div>
-            <h1 className="text-2xl font-bold text-gray-800">Mabox.ma</h1>
+            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-500">
+              <X size={24} />
+            </button>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-500">
-            <X size={24} />
-          </button>
+          
+          <div className="flex bg-gray-100 p-1 rounded-lg">
+            <button
+              onClick={() => { setErpMode('physical'); setView('dashboard'); }}
+              className={`flex-1 text-sm py-1.5 rounded-md transition-colors ${erpMode === 'physical' ? 'bg-white shadow-sm font-bold text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              📦 Physique
+            </button>
+            <button
+              onClick={() => { setErpMode('digital'); setView('digital_dashboard'); }}
+              className={`flex-1 text-sm py-1.5 rounded-md transition-colors ${erpMode === 'digital' ? 'bg-white shadow-sm font-bold text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              💻 Digital
+            </button>
+          </div>
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          <NavItem id="dashboard" icon={LayoutDashboard} label={t('dashboard')} />
-          <NavItem id="treasury" icon={Landmark} label={t('treasury')} />
-          <NavItem id="transactions" icon={ArrowRightLeft} label={t('transactions')} />
-          <NavItem id="inventory" icon={Package} label={t('inventory')} />
-          <NavItem id="archives" icon={Archive} label={t('archives')} />
-          <NavItem id="history" icon={FileText} label={t('history')} />
-          <NavItem id="suppliers" icon={Truck} label={t('suppliers')} />
+          {erpMode === 'physical' ? (
+            <>
+              <NavItem id="dashboard" icon={LayoutDashboard} label={t('dashboard')} />
+              <NavItem id="treasury" icon={Landmark} label={t('treasury')} />
+              <NavItem id="transactions" icon={ArrowRightLeft} label={t('transactions')} />
+              <NavItem id="inventory" icon={Package} label={t('inventory')} />
+              <NavItem id="archives" icon={Archive} label={t('archives')} />
+              <NavItem id="history" icon={FileText} label={t('history')} />
+              <NavItem id="suppliers" icon={Truck} label={t('suppliers')} />
+            </>
+          ) : (
+            <>
+              <NavItem id="digital_dashboard" icon={LayoutDashboard} label="Tableau de bord" />
+              <NavItem id="digital_abonnements" icon={Users} label="Abonnements" />
+              <NavItem id="digital_treasury" icon={Landmark} label={t('treasury')} />
+              <NavItem id="digital_transactions" icon={ArrowRightLeft} label={t('transactions')} />
+              <NavItem id="digital_inventory" icon={Package} label="Produits Digitaux" />
+              <NavItem id="digital_suppliers" icon={Truck} label={t('suppliers')} />
+            </>
+          )}
           {currentUser.role === 'admin' && (
             <>
               <NavItem id="reports" icon={FileText} label={t('reports')} />
@@ -1214,10 +1287,18 @@ function App() {
             />
           )}
 
-          {view === 'reports' && currentUser.role === 'admin' && (
+          {view === 'reports' && currentUser.role === 'admin' && erpMode !== 'digital' && (
             <ReportView
               transactions={transactions}
               inventory={inventory}
+              t={t}
+            />
+          )}
+
+          {view === 'reports' && currentUser.role === 'admin' && erpMode === 'digital' && (
+            <DigitalReportView
+              digitalTransactions={digitalTransactions}
+              digitalInventory={digitalInventory}
               t={t}
             />
           )}
@@ -1248,6 +1329,53 @@ function App() {
               <p>{t('adminOnly')}</p>
             </div>
           )}
+
+          {/* --- DIGITAL ERP VIEWS --- */}
+          {view === 'digital_dashboard' && (
+            <DigitalDashboard 
+              subscriptions={subscriptions} 
+              digitalTransactions={digitalTransactions} 
+              t={t} 
+            />
+          )}
+          {view === 'digital_abonnements' && (
+            <DigitalAbonnementsManager 
+              subscriptions={subscriptions} 
+              digitalInventory={digitalInventory} 
+              supabase={supabase} 
+              t={t} 
+            />
+          )}
+          {view === 'digital_inventory' && (
+            <DigitalInventoryManager 
+              digitalInventory={digitalInventory} 
+              supabase={supabase} 
+              t={t} 
+            />
+          )}
+          {view === 'digital_treasury' && (
+            <DigitalTreasuryManager 
+              digitalTransactions={digitalTransactions} 
+              bankAccounts={bankAccounts} 
+            />
+          )}
+          {view === 'digital_transactions' && (
+            <DigitalTransactionsManager 
+              digitalTransactions={digitalTransactions} 
+              supabase={supabase}
+              bankAccounts={bankAccounts}
+              digitalInventory={digitalInventory}
+            />
+          )}
+          {view === 'digital_suppliers' && (
+            <DigitalSuppliersManager 
+              digitalSuppliers={digitalSuppliers}
+              digitalTransactions={digitalTransactions}
+              supabase={supabase}
+              t={t}
+            />
+          )}
+
         </main>
       </div>
     </div>
