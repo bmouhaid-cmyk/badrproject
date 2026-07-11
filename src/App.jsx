@@ -398,7 +398,7 @@ const LoginScreen = ({ users, onLogin, t }) => {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    const user = users.find(u => u.pin === pin);
+    const user = users.find(u => String(u.pin) === pin);
     if (user) {
       onLogin(user);
     } else {
@@ -980,9 +980,13 @@ function App() {
   }, []);
 
   // --- Derived State (Metrics) ---
+  const digitalIncome = digitalTransactions
+    ? digitalTransactions.filter(t => t.type === 'sale' && t.status === 'completed').reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0)
+    : 0;
+
   const totalIncome = transactions
     .filter(t => t.type === 'sale' && t.status === 'completed')
-    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
+    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0) + digitalIncome;
 
   const operatingExpenses = transactions
     .reduce((acc, curr) => {
@@ -1004,6 +1008,12 @@ function App() {
       return acc;
     }, 0);
 
+  const digitalExpenses = digitalTransactions
+    ? digitalTransactions.filter(t => t.type === 'expense' && t.status === 'completed').reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0)
+    : 0;
+
+  const totalOperatingExpenses = operatingExpenses + digitalExpenses;
+
   // COGS (Cost of Goods Sold) Calculation
   const cogs = transactions
     .filter(t => t.type === 'sale' && t.status === 'completed')
@@ -1016,17 +1026,21 @@ function App() {
     }, 0);
 
   // Calculate Total Purchases (for Cash Flow / Total Expenses display)
+  const digitalPurchases = digitalTransactions
+    ? digitalTransactions.filter(t => t.type === 'purchase' && t.status === 'completed').reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0)
+    : 0;
+
   const totalPurchases = transactions
     .filter(t => t.type === 'purchase' && t.status === 'completed')
-    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0);
+    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0) + digitalPurchases;
 
   // Total Expenses for Display (Cash Flow Basis: Operating Expenses + Purchases)
   // This matches the "previous version" logic as requested.
-  const totalExpenses = operatingExpenses + totalPurchases;
+  const totalExpenses = totalOperatingExpenses + totalPurchases;
 
   // Net Profit (Accrual Basis: Income - COGS - Operating Expenses)
   // This ensures profit is based on actual sales margin, not cash outflow.
-  const netProfit = totalIncome - (cogs + operatingExpenses);
+  const netProfit = totalIncome - (cogs + totalOperatingExpenses);
 
   const inventoryValue = inventory.reduce((sum, item) => {
     return sum + (parseFloat(item.buy_price || 0) * parseInt(item.quantity || 0));
@@ -1245,6 +1259,7 @@ function App() {
           {view === 'treasury' && (
             <TreasuryManager
               transactions={transactions}
+              digitalTransactions={digitalTransactions}
               setTransactions={setTransactions}
               bankAccounts={bankAccounts}
               setBankAccounts={setBankAccounts}
@@ -1343,12 +1358,15 @@ function App() {
               subscriptions={subscriptions} 
               digitalInventory={digitalInventory} 
               supabase={supabase} 
+              bankAccounts={bankAccounts}
               t={t} 
             />
           )}
           {view === 'digital_inventory' && (
             <DigitalInventoryManager 
               digitalInventory={digitalInventory} 
+              digitalSuppliers={digitalSuppliers}
+              bankAccounts={bankAccounts}
               supabase={supabase} 
               t={t} 
             />
@@ -1371,6 +1389,8 @@ function App() {
             <DigitalSuppliersManager 
               digitalSuppliers={digitalSuppliers}
               digitalTransactions={digitalTransactions}
+              digitalInventory={digitalInventory}
+              bankAccounts={bankAccounts}
               supabase={supabase}
               t={t}
             />
@@ -4960,7 +4980,7 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
 };
 
 
-const TreasuryManager = ({ transactions, setTransactions, bankAccounts, setBankAccounts, t }) => {
+const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, bankAccounts, setBankAccounts, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', type: 'bank', initialBalance: 0 });
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -4990,6 +5010,16 @@ const TreasuryManager = ({ transactions, setTransactions, bankAccounts, setBankA
          balance -= parseFloat(tx.amount || 0);
       }
     });
+
+    if (digitalTransactions) {
+      digitalTransactions.forEach(tx => {
+        if (tx.bank_account_id === accountId) {
+          if (tx.type === 'sale') balance += parseFloat(tx.amount || 0);
+          else if (tx.type === 'purchase' || tx.type === 'expense') balance -= parseFloat(tx.amount || 0);
+        }
+      });
+    }
+
     return balance;
   };
 
@@ -4999,13 +5029,21 @@ const TreasuryManager = ({ transactions, setTransactions, bankAccounts, setBankA
     .filter(t => t.status === 'completed' && (t.type === 'sale' || t.type === 'transfer'))
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0); // Wait, transfer shouldn't count as global Entrée if it's internal. Let's just count sales.
     
+  const digitalTotalEntrees = digitalTransactions
+    ? digitalTransactions.filter(t => t.type === 'sale' && t.bank_account_id).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
+    : 0;
+    
+  const digitalTotalSorties = digitalTransactions
+    ? digitalTransactions.filter(t => (t.type === 'purchase' || t.type === 'expense') && t.bank_account_id).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
+    : 0;
+
   const trueTotalEntrees = transactions
     .filter(t => t.status === 'completed' && t.type === 'sale' && t.bank_account_id)
-    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) + digitalTotalEntrees;
     
   const trueTotalSorties = transactions
     .filter(t => t.status === 'completed' && (t.type === 'purchase' || t.type === 'expense') && t.bank_account_id)
-    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) + digitalTotalSorties;
 
   const handleAddAccount = async (e) => {
     e.preventDefault();

@@ -125,11 +125,11 @@ export const DigitalDashboard = ({ subscriptions, digitalTransactions, t }) => {
   );
 };
 
-export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, supabase, t }) => {
+export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, supabase, bankAccounts = [], t }) => {
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [formData, setFormData] = useState({ id: null, customer_name: '', customer_phone: '', product_id: '', duration_months: 1, amount_paid: 0, start_date: new Date().toISOString().split('T')[0], status: 'active', notes: '' });
+  const [formData, setFormData] = useState({ id: null, customer_name: '', customer_phone: '', product_id: '', duration_months: 1, credits_to_deduct: 1, amount_paid: 0, start_date: new Date().toISOString().split('T')[0], status: 'active', notes: '', bank_account_id: '' });
 
   const calculateEndDate = (startDateStr, months) => {
     const d = new Date(startDateStr);
@@ -159,7 +159,31 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       if (formData.id) {
         await supabase.from('subscriptions').update(dbSub).eq('id', formData.id);
       } else {
-        await supabase.from('subscriptions').insert([dbSub]);
+        const { data: insertedSub, error: subErr } = await supabase.from('subscriptions').insert([dbSub]).select();
+        
+        if (!subErr && insertedSub && insertedSub[0]) {
+          // Log digital transaction
+          const digTx = {
+            date: new Date().toISOString(),
+            type: 'sale',
+            item_name: `Abo: ${product ? product.name : 'Unknown'} - ${formData.customer_name}`,
+            amount: parseFloat(formData.amount_paid),
+            bank_account_id: formData.bank_account_id || null,
+            subscription_id: insertedSub[0].id,
+            digital_product_id: formData.product_id || null,
+            status: 'completed',
+            notes: 'Abonnement Digital'
+          };
+          const { error: digTxErr } = await supabase.from('digital_transactions').insert([digTx]);
+          if (digTxErr) console.error('Error inserting digital transaction:', digTxErr);
+          
+          // Deduct stock (Credits)
+          if (formData.product_id && product) {
+            const creditsToDeduct = parseInt(formData.credits_to_deduct) || parseInt(formData.duration_months) || 1;
+            const newQty = (product.quantity || 0) - creditsToDeduct;
+            await supabase.from('digital_inventory').update({ quantity: newQty }).eq('id', product.id);
+          }
+        }
       }
       setShowForm(false);
     } catch (err) {
@@ -168,9 +192,53 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
     }
   };
 
-  const handleTerminate = async (id) => {
-    if(window.confirm('Marquer comme terminé ?')) {
+  const handleDeleteAction = async (id) => {
+    const sub = subscriptions.find(s => s.id === id);
+    if (!sub) return;
+    
+    const action = window.prompt("S'agit-il d'un remboursement ou d'une suppression ?\n\nTapez 'R' pour Rembourser (termine l'abo et crée une dépense de remboursement)\nTapez 'S' pour Supprimer (efface complètement l'abonnement)");
+
+    if (action && action.toLowerCase() === 'r') {
+      // Find original transaction to refund from the correct bank account
+      const { data: origTx } = await supabase.from('digital_transactions').select('bank_account_id').eq('subscription_id', id).eq('type', 'sale').maybeSingle();
+      const bankAccountId = origTx ? origTx.bank_account_id : null;
+
       await supabase.from('subscriptions').update({ status: 'terminated' }).eq('id', id);
+      const refundTx = {
+          date: new Date().toISOString(),
+          type: 'expense',
+          item_name: `Remboursement Abo: ${sub.product_name} - ${sub.customer_name}`,
+          amount: parseFloat(sub.amount_paid),
+          subscription_id: sub.id,
+          bank_account_id: bankAccountId,
+          digital_product_id: sub.product_id || null,
+          status: 'completed',
+          notes: 'Remboursement suite à annulation'
+      };
+      const { error: refundErr } = await supabase.from('digital_transactions').insert([refundTx]);
+      
+      const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock ? (Abonnement de ${sub.duration_months} mois)`, sub.duration_months);
+      if (restockAmount !== null && !isNaN(restockAmount) && parseInt(restockAmount) > 0 && sub.product_id) {
+        const prod = digitalInventory?.find(p => p.id === sub.product_id);
+        if (prod) {
+          await supabase.from('digital_inventory').update({ quantity: (prod.quantity || 0) + parseInt(restockAmount) }).eq('id', sub.product_id);
+        }
+      }
+      
+      if (refundErr) console.error('Error inserting refund:', refundErr);
+      else alert("Abonnement annulé, remboursement enregistré, et stock mis à jour si demandé.");
+    } else if (action && action.toLowerCase() === 's') {
+      if (window.confirm("Êtes-vous sûr de vouloir supprimer définitivement cet abonnement ?")) {
+        const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock avant suppression ? (Abonnement de ${sub.duration_months} mois)`, sub.duration_months);
+        if (restockAmount !== null && !isNaN(restockAmount) && parseInt(restockAmount) > 0 && sub.product_id) {
+          const prod = digitalInventory?.find(p => p.id === sub.product_id);
+          if (prod) {
+            await supabase.from('digital_inventory').update({ quantity: (prod.quantity || 0) + parseInt(restockAmount) }).eq('id', sub.product_id);
+          }
+        }
+        await supabase.from('subscriptions').delete().eq('id', id);
+        alert("Abonnement supprimé.");
+      }
     }
   };
 
@@ -227,7 +295,7 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
                 alert("Veuillez d'abord ajouter un Produit Digital dans le catalogue avant de créer un abonnement.");
                 return;
               }
-              setFormData({ id: null, customer_name: '', customer_phone: '', product_id: '', duration_months: 1, amount_paid: 0, start_date: new Date().toISOString().split('T')[0], status: 'active', notes: '' }); 
+              setFormData({ id: null, customer_name: '', customer_phone: '', product_id: '', duration_months: 1, credits_to_deduct: 1, amount_paid: 0, start_date: new Date().toISOString().split('T')[0], status: 'active', notes: '', bank_account_id: '' }); 
               setShowForm(true); 
             }} 
             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm"
@@ -259,13 +327,22 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Durée (Mois)</label>
-                <select className="w-full border-gray-300 rounded-lg p-2 border" value={formData.duration_months} onChange={e => setFormData({...formData, duration_months: e.target.value})}>
+                <select className="w-full border-gray-300 rounded-lg p-2 border" value={formData.duration_months} onChange={e => {
+                  const val = parseInt(e.target.value);
+                  setFormData({...formData, duration_months: val, credits_to_deduct: val});
+                }}>
                   <option value={1}>1 Mois</option>
                   <option value={3}>3 Mois</option>
                   <option value={6}>6 Mois</option>
                   <option value={12}>12 Mois (1 An)</option>
                 </select>
               </div>
+              {!formData.id && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Crédits à déduire du stock</label>
+                  <input required type="number" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.credits_to_deduct} onChange={e => setFormData({...formData, credits_to_deduct: e.target.value})} />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date de début</label>
                 <input required type="date" className="w-full border-gray-300 rounded-lg p-2 border" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} />
@@ -274,6 +351,15 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
                 <label className="block text-sm font-medium text-gray-700 mb-1">Montant Payé (MAD)</label>
                 <input required type="number" step="0.01" className="w-full border-gray-300 rounded-lg p-2 border" value={formData.amount_paid} onChange={e => setFormData({...formData, amount_paid: e.target.value})} />
               </div>
+              {!formData.id && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Compte / Caisse (Encaissement)</label>
+                  <select required className="w-full border-gray-300 rounded-lg p-2 border" value={formData.bank_account_id} onChange={e => setFormData({...formData, bank_account_id: e.target.value})}>
+                    <option value="">Sélectionner une caisse...</option>
+                    {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name} (Solde: {parseFloat(b.initial_balance || 0).toLocaleString()} MAD)</option>)}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-3 mt-4">
               <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
@@ -317,8 +403,8 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
                   <td className="px-6 py-4 font-mono font-bold">{parseFloat(s.amount_paid || 0).toLocaleString()} MAD</td>
                   <td className="px-6 py-4">{statusBadge}</td>
                   <td className="px-6 py-4 text-right space-x-2">
-                    {s.status === 'active' && <button onClick={() => handleTerminate(s.id)} className="text-red-500 hover:text-red-700 text-xs font-medium mr-3">Désactiver</button>}
-                    <button onClick={() => { setFormData(s); setShowForm(true); }} className="text-blue-500 hover:text-blue-700"><Edit size={16}/></button>
+                    <button onClick={() => { setFormData(s); setShowForm(true); }} className="text-blue-500 hover:text-blue-700" title="Modifier"><Edit size={18}/></button>
+                    <button onClick={() => handleDeleteAction(s.id)} className="text-red-500 hover:text-red-700 ml-2" title="Annuler / Supprimer"><Trash2 size={18}/></button>
                   </td>
                 </tr>
               );
@@ -341,10 +427,116 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
   );
 };
 
-export const DigitalInventoryManager = ({ digitalInventory, supabase, t }) => {
+const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSuppliers, bankAccounts, supabase, defaultSupplierId = '', defaultProductId = '' }) => {
+  const [formData, setFormData] = useState({
+    supplier_id: defaultSupplierId,
+    product_id: defaultProductId,
+    quantity: 1,
+    unit_price: 0,
+    bank_account_id: ''
+  });
+
+  if (!isOpen) return null;
+
+  const handleProductChange = (e) => {
+    const pid = e.target.value;
+    const prod = digitalInventory?.find(p => p.id === pid);
+    setFormData({ ...formData, product_id: pid, unit_price: prod ? prod.buy_price || 0 : 0 });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const product = digitalInventory.find(p => p.id === formData.product_id);
+      if (!product) return alert('Produit invalide');
+      
+      const newQuantity = (product.quantity || 0) + parseInt(formData.quantity);
+      
+      const { error: invErr } = await supabase.from('digital_inventory').update({ quantity: newQuantity }).eq('id', formData.product_id);
+      if (invErr) throw invErr;
+      
+      const totalAmount = parseFloat(formData.unit_price) * parseInt(formData.quantity);
+      const tx = {
+        date: new Date().toISOString(),
+        type: 'purchase',
+        item_name: `Achat stock: ${formData.quantity}x ${product.name}`,
+        amount: totalAmount,
+        bank_account_id: formData.bank_account_id || null,
+        digital_supplier_id: formData.supplier_id || null,
+        digital_product_id: formData.product_id,
+        status: 'completed',
+        notes: 'Réapprovisionnement automatique'
+      };
+      
+      const { error: txErr } = await supabase.from('digital_transactions').insert([tx]);
+      if (txErr) throw txErr;
+      
+      alert('Stock réapprovisionné et transaction enregistrée avec succès !');
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert('Erreur: ' + err.message);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+          <h3 className="text-lg font-bold text-gray-800 flex items-center"><Package className="mr-2 text-purple-600"/> Réapprovisionner Stock</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur (Optionnel)</label>
+            <select className="w-full border p-2 rounded-lg" value={formData.supplier_id} onChange={e=>setFormData({...formData, supplier_id:e.target.value})}>
+              <option value="">Aucun fournisseur (Achat direct)</option>
+              {digitalSuppliers && digitalSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Produit Digital</label>
+            <select required className="w-full border p-2 rounded-lg" value={formData.product_id} onChange={handleProductChange}>
+              <option value="">Sélectionner un produit</option>
+              {digitalInventory && digitalInventory.map(p => <option key={p.id} value={p.id}>{p.name} (Stock actuel: {p.quantity||0})</option>)}
+            </select>
+          </div>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quantité</label>
+              <input required type="number" min="1" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>setFormData({...formData, quantity:e.target.value})} />
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prix Unitaire (MAD)</label>
+              <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.unit_price} onChange={e=>setFormData({...formData, unit_price:e.target.value})} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Paiement depuis (Compte)</label>
+            <select required className="w-full border p-2 rounded-lg" value={formData.bank_account_id} onChange={e=>setFormData({...formData, bank_account_id:e.target.value})}>
+              <option value="">Sélectionner un compte/caisse</option>
+              {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+          <div className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border border-gray-200 mt-2">
+            <span className="text-gray-600 font-medium">Coût Total :</span>
+            <span className="text-xl font-bold text-red-600">{(parseFloat(formData.unit_price || 0) * parseInt(formData.quantity || 0)).toLocaleString()} MAD</span>
+          </div>
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">Annuler</button>
+            <button type="submit" className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center hover:bg-purple-700"><Save size={18} className="mr-2"/> Confirmer l'Achat</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export const DigitalInventoryManager = ({ digitalInventory, digitalSuppliers, bankAccounts, supabase, t }) => {
   const [showForm, setShowForm] = useState(false);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '' });
+  const [formData, setFormData] = useState({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '', quantity: 0 });
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'MAD' }).format(amount);
@@ -353,11 +545,24 @@ export const DigitalInventoryManager = ({ digitalInventory, supabase, t }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (formData.id) {
-        await supabase.from('digital_inventory').update(formData).eq('id', formData.id);
-      } else {
-        await supabase.from('digital_inventory').insert([formData]);
+      const payload = { ...formData };
+      if (!payload.id) {
+        delete payload.id;
       }
+
+      let res;
+      if (formData.id) {
+        res = await supabase.from('digital_inventory').update(payload).eq('id', formData.id);
+      } else {
+        res = await supabase.from('digital_inventory').insert([payload]);
+      }
+
+      if (res && res.error) {
+        console.error('Supabase error:', res.error);
+        alert('Erreur: ' + res.error.message);
+        return;
+      }
+
       setShowForm(false);
     } catch (err) {
       console.error(err);
@@ -442,10 +647,25 @@ export const DigitalInventoryManager = ({ digitalInventory, supabase, t }) => {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
           />
         </div>
-        <button className="px-4 py-2 text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-2 font-medium">
-          <Download size={18} /> Exporter
-        </button>
+
+        <div className="flex gap-2">
+          <button onClick={() => setShowPurchaseModal(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center shadow-sm">
+            <ArrowDown size={18} className="mr-2"/> Réapprovisionner
+          </button>
+          <button onClick={() => { setFormData({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '', quantity: 0 }); setShowForm(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
+            <Plus size={18} className="mr-2"/> Nouveau Produit
+          </button>
+        </div>
       </div>
+
+      <PurchaseStockModal 
+        isOpen={showPurchaseModal} 
+        onClose={() => setShowPurchaseModal(false)}
+        digitalInventory={digitalInventory}
+        digitalSuppliers={digitalSuppliers}
+        bankAccounts={bankAccounts}
+        supabase={supabase}
+      />
 
       {showForm && (
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm animate-fade-in-up">
@@ -459,6 +679,11 @@ export const DigitalInventoryManager = ({ digitalInventory, supabase, t }) => {
               <div className="lg:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
                 <input type="text" placeholder="Ex: Logiciels, Streaming..." className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})} />
+              </div>
+              <div className="lg:col-span-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Stock Actuel (Manuel)</label>
+                <input type="number" className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" value={formData.quantity} onChange={e=>setFormData({...formData, quantity:e.target.value})} />
+                <p className="text-xs text-gray-500 mt-1">Utilisez "Réapprovisionner" pour ajouter du stock de manière tracée. Cette case sert aux corrections d'inventaire.</p>
               </div>
               <div className="lg:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Coût d'achat unitaire (MAD)</label>
@@ -486,6 +711,7 @@ export const DigitalInventoryManager = ({ digitalInventory, supabase, t }) => {
               <th className="px-6 py-4 font-semibold">Nom</th>
               <th className="px-6 py-4 font-semibold">Prix Achat</th>
               <th className="px-6 py-4 font-semibold">Prix Vente</th>
+              <th className="px-6 py-4 font-semibold">Stock (Crédits)</th>
               <th className="px-6 py-4 font-semibold">Marge</th>
               <th className="px-6 py-4 font-semibold text-right">Actions</th>
             </tr>
@@ -496,6 +722,11 @@ export const DigitalInventoryManager = ({ digitalInventory, supabase, t }) => {
                 <td className="px-6 py-4 font-medium text-gray-900">{item.name}<br/><span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md mt-1 inline-block">{item.category || 'Sans catégorie'}</span></td>
                 <td className="px-6 py-4 font-mono">{formatCurrency(parseFloat(item.buy_price || 0))}</td>
                 <td className="px-6 py-4 font-mono text-purple-600 font-bold">{formatCurrency(parseFloat(item.sell_price || 0))}</td>
+                <td className="px-6 py-4 font-bold text-gray-800">
+                  <span className={`px-2 py-1 rounded ${item.quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {item.quantity || 0}
+                  </span>
+                </td>
                 <td className="px-6 py-4 font-mono text-green-600 font-medium">{(parseFloat(item.sell_price || 0) - parseFloat(item.buy_price || 0)) > 0 ? '+' : ''}{formatCurrency(parseFloat(item.sell_price || 0) - parseFloat(item.buy_price || 0))}</td>
                 <td className="px-6 py-4 text-right space-x-2">
                   <button onClick={() => { setFormData(item); setShowForm(true); }} className="text-blue-500 hover:text-blue-700"><Edit size={16}/></button>
@@ -669,11 +900,12 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts }) =>
   );
 }
 
-export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bankAccounts, digitalInventory }) => {
+export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bankAccounts, digitalInventory, subscriptions, digitalSuppliers }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
+    id: null,
     type: 'sale',
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -685,7 +917,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const newTx = {
+      const txData = {
         type: formData.type,
         amount: parseFloat(formData.amount),
         date: formData.date,
@@ -694,15 +926,34 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
         bank_account_id: formData.bank_account_id || null,
         status: 'completed'
       };
-      const { error } = await supabase.from('digital_transactions').insert([newTx]);
+      
+      let error;
+      if (formData.id) {
+        const { error: updateErr } = await supabase.from('digital_transactions').update(txData).eq('id', formData.id);
+        error = updateErr;
+      } else {
+        const { error: insertErr } = await supabase.from('digital_transactions').insert([txData]);
+        error = insertErr;
+      }
+      
       if (error) throw error;
       setShowForm(false);
       setFormData({
-        type: 'sale', amount: '', date: new Date().toISOString().split('T')[0], item_name: '', notes: '', bank_account_id: ''
+        id: null, type: 'expense', amount: '', date: new Date().toISOString().split('T')[0], item_name: '', notes: '', bank_account_id: ''
       });
     } catch (err) {
       console.error(err);
-      alert('Erreur lors de la création de la transaction: ' + err.message);
+      alert('Erreur lors de la sauvegarde: ' + err.message);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm('Êtes-vous sûr de vouloir supprimer cette transaction ? (Ceci affectera vos soldes et calculs)')) {
+      const { error } = await supabase.from('digital_transactions').delete().eq('id', id);
+      if (error) {
+        console.error(error);
+        alert('Erreur lors de la suppression');
+      }
     }
   };
 
@@ -744,7 +995,10 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
             <option value="expense">Dépenses (Sorties)</option>
             <option value="purchase">Achats</option>
           </select>
-          <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
+          <button onClick={() => {
+            setFormData({ id: null, type: 'expense', amount: '', date: new Date().toISOString().split('T')[0], item_name: '', notes: '', bank_account_id: '' });
+            setShowForm(true);
+          }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
             <Plus size={18} className="mr-2"/> Nouvelle Transaction
           </button>
         </div>
@@ -752,15 +1006,20 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
 
       {showForm && (
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Créer une Transaction Digitale</h3>
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-gray-800">Créer une Transaction Digitale (Manuelle)</h3>
+            <p className="text-sm text-purple-600 bg-purple-50 p-2 rounded mt-2">
+              <strong>Astuce :</strong> Les ventes doivent être créées depuis la page <strong>Abonnements</strong>, et les achats de stock depuis <strong>Fournisseurs</strong> (le système créera la transaction automatiquement). Utilisez ce formulaire uniquement pour les <strong>Autres Dépenses</strong> (Serveurs, Marketing) ou <strong>Autres Revenus</strong> divers.
+            </p>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type d'opération</label>
                 <select required className="w-full border p-2 rounded-lg bg-white" value={formData.type} onChange={e=>setFormData({...formData, type:e.target.value})}>
-                  <option value="sale">Vente (Entrée)</option>
-                  <option value="expense">Dépense (Sortie)</option>
-                  <option value="purchase">Achat (Sortie)</option>
+                  <option value="expense">Autre Dépense (Sortie)</option>
+                  <option value="sale">Autre Revenu (Entrée)</option>
+                  <option value="purchase">Autre Achat</option>
                 </select>
               </div>
               <div>
@@ -802,6 +1061,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
               <th className="px-6 py-4 font-semibold">Description</th>
               <th className="px-6 py-4 font-semibold">Compte</th>
               <th className="px-6 py-4 font-semibold text-right">Montant</th>
+              <th className="px-6 py-4 font-semibold text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -815,7 +1075,14 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                       {t.type.toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-6 py-4 font-medium">{t.item_name || t.notes}</td>
+                  <td className="px-6 py-4 font-medium">
+                    {t.item_name || t.notes}
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {t.subscription_id && <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">Abo: {subscriptions?.find(s=>s.id === t.subscription_id)?.customer_name || 'Lié'}</span>}
+                      {t.digital_supplier_id && <span className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded border border-purple-100">Fourn: {digitalSuppliers?.find(ds=>ds.id === t.digital_supplier_id)?.name || 'Lié'}</span>}
+                      {t.digital_product_id && <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100">Prod: {digitalInventory?.find(di=>di.id === t.digital_product_id)?.name || 'Lié'}</span>}
+                    </div>
+                  </td>
                   <td className="px-6 py-4">
                     <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
                       {account ? account.name : 'Non spécifié'}
@@ -823,6 +1090,10 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                   </td>
                   <td className={`px-6 py-4 text-right font-mono font-bold ${t.type === 'sale' ? 'text-green-600' : 'text-red-500'}`}>
                     {t.type === 'sale' ? '+' : '-'}{parseFloat(t.amount).toLocaleString()} MAD
+                  </td>
+                  <td className="px-6 py-4 text-right space-x-2">
+                    <button onClick={() => { setFormData(t); setShowForm(true); }} className="text-blue-500 hover:text-blue-700" title="Modifier"><Edit size={16}/></button>
+                    <button onClick={() => handleDelete(t.id)} className="text-red-500 hover:text-red-700" title="Supprimer"><Trash2 size={16}/></button>
                   </td>
                 </tr>
               );
@@ -845,8 +1116,10 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
   );
 }
 
-export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions, supabase, t }) => {
+export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions, digitalInventory, bankAccounts, supabase, t }) => {
   const [showForm, setShowForm] = useState(false);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [activeSupplierId, setActiveSupplierId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({ id: null, name: '', contact: '', email: '', phone: '', notes: '' });
 
@@ -950,6 +1223,16 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
         </div>
       )}
 
+      <PurchaseStockModal 
+        isOpen={showPurchaseModal} 
+        onClose={() => setShowPurchaseModal(false)}
+        digitalInventory={digitalInventory}
+        digitalSuppliers={digitalSuppliers}
+        bankAccounts={bankAccounts}
+        supabase={supabase}
+        defaultSupplierId={activeSupplierId}
+      />
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         <table className="w-full text-left text-sm text-gray-600">
           <thead className="bg-gray-50 border-b border-gray-200 text-gray-700">
@@ -975,7 +1258,8 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
                   <td className="px-6 py-4">{item.contact || 'N/A'}<br/><span className="text-xs text-gray-500">{item.phone}</span></td>
                   <td className="px-6 py-4 text-xs max-w-xs truncate">{item.notes}</td>
                   <td className="px-6 py-4 text-right font-mono text-purple-600 font-bold">{formatCurrency(totalPurchases)}</td>
-                  <td className="px-6 py-4 text-right space-x-2">
+                  <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                    <button onClick={() => { setActiveSupplierId(item.id); setShowPurchaseModal(true); }} className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200" title="Nouvel Achat (Réapprovisionner)"><ArrowDown size={14} className="inline mr-1"/>Acheter</button>
                     <button onClick={() => { setFormData(item); setShowForm(true); }} className="text-blue-500 hover:text-blue-700"><Edit size={16}/></button>
                     <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
                   </td>
