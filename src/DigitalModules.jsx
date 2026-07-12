@@ -677,6 +677,7 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '', quantity: 0 });
+  const [selectedHistoryProduct, setSelectedHistoryProduct] = useState(null);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'MAD' }).format(amount);
