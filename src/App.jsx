@@ -1241,7 +1241,7 @@ function App() {
               deliveryConfig={deliveryConfig}
               packagingConfig={packagingConfig}
               suppliers={suppliers}
-              bankAccounts={bankAccounts}
+              bankAccounts={bankAccounts.filter(b => !b.type?.endsWith('_digital'))}
               t={t}
             />
           )}
@@ -1261,8 +1261,9 @@ function App() {
               transactions={transactions}
               digitalTransactions={digitalTransactions}
               setTransactions={setTransactions}
-              bankAccounts={bankAccounts}
+              bankAccounts={bankAccounts.filter(b => !b.type?.endsWith('_digital'))}
               setBankAccounts={setBankAccounts}
+              supabase={supabase}
               t={t}
             />
           )}
@@ -1274,7 +1275,7 @@ function App() {
               transactions={transactions}
               setTransactions={setTransactions}
               suppliers={suppliers}
-              bankAccounts={bankAccounts}
+              bankAccounts={bankAccounts.filter(b => !b.type?.endsWith('_digital'))}
               supabase={supabase}
               t={t}
             />
@@ -1288,12 +1289,18 @@ function App() {
               setTransactions={setTransactions}
               inventory={inventory}
               setInventory={setInventory}
-              bankAccounts={bankAccounts}
+              bankAccounts={bankAccounts.filter(b => !b.type?.endsWith('_digital'))}
               supabase={supabase}
               t={t}
             />
           )}
-
+          {view === 'archives' && (
+            <ProductArchiveManager
+              archive={archive}
+              setArchive={setArchive}
+              t={t}
+            />
+          )}
           {view === 'history' && (
             <HistoryView
               transactions={transactions}
@@ -1317,7 +1324,6 @@ function App() {
               t={t}
             />
           )}
-
           {view === 'settings' && currentUser.role === 'admin' && (
             <SettingsView
               deliveryConfig={deliveryConfig}
@@ -1350,6 +1356,7 @@ function App() {
             <DigitalDashboard 
               subscriptions={subscriptions} 
               digitalTransactions={digitalTransactions} 
+              digitalInventory={digitalInventory}
               t={t} 
             />
           )}
@@ -1358,7 +1365,7 @@ function App() {
               subscriptions={subscriptions} 
               digitalInventory={digitalInventory} 
               supabase={supabase} 
-              bankAccounts={bankAccounts}
+              bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))}
               t={t} 
             />
           )}
@@ -1366,7 +1373,8 @@ function App() {
             <DigitalInventoryManager 
               digitalInventory={digitalInventory} 
               digitalSuppliers={digitalSuppliers}
-              bankAccounts={bankAccounts}
+              digitalTransactions={digitalTransactions}
+              bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))}
               supabase={supabase} 
               t={t} 
             />
@@ -1374,15 +1382,18 @@ function App() {
           {view === 'digital_treasury' && (
             <DigitalTreasuryManager 
               digitalTransactions={digitalTransactions} 
-              bankAccounts={bankAccounts} 
+              bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))} 
+              supabase={supabase}
             />
           )}
           {view === 'digital_transactions' && (
             <DigitalTransactionsManager 
               digitalTransactions={digitalTransactions} 
               supabase={supabase}
-              bankAccounts={bankAccounts}
+              bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))}
               digitalInventory={digitalInventory}
+              subscriptions={subscriptions}
+              digitalSuppliers={digitalSuppliers}
             />
           )}
           {view === 'digital_suppliers' && (
@@ -1390,7 +1401,7 @@ function App() {
               digitalSuppliers={digitalSuppliers}
               digitalTransactions={digitalTransactions}
               digitalInventory={digitalInventory}
-              bankAccounts={bankAccounts}
+              bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))}
               supabase={supabase}
               t={t}
             />
@@ -4980,7 +4991,7 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
 };
 
 
-const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, bankAccounts, setBankAccounts, t }) => {
+const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, bankAccounts, setBankAccounts, supabase, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', type: 'bank', initialBalance: 0 });
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -5064,6 +5075,20 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
     }
   };
 
+  const handleDeleteAccount = async (id) => {
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer ce compte ? Cette action est irréversible.")) {
+      const { error } = await supabase.from('bank_accounts').delete().eq('id', id);
+      if (error) {
+        alert("Erreur lors de la suppression : " + error.message);
+      } else {
+        // Optimistic UI update or let subscription handle it. 
+        // We'll let the subscription handle it since it fetches everything automatically,
+        // or we can just window.location.reload() for simplicity.
+        window.location.reload();
+      }
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -5137,13 +5162,22 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
              {bankAccounts.map(account => (
-               <div key={account.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow">
+               <div key={account.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow relative group">
                  <div className="flex justify-between items-start mb-2">
                    <div className="flex items-center space-x-2">
                      <Wallet className="text-blue-500" size={20}/>
                      <h4 className="font-bold text-gray-800">{account.name}</h4>
                    </div>
-                   <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600 capitalize">{account.type}</span>
+                   <div className="flex items-center space-x-2">
+                     <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600 capitalize">{account.type}</span>
+                     <button 
+                       onClick={() => handleDeleteAccount(account.id)}
+                       className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 transition-opacity"
+                       title="Supprimer ce compte"
+                     >
+                       <Trash2 size={16} />
+                     </button>
+                   </div>
                  </div>
                  <p className="text-2xl font-bold text-gray-900 mt-4">{formatCurrency(getAccountBalance(account.id))}</p>
                </div>
@@ -5216,34 +5250,6 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
                 />
               </div>
               
-              {!isEditing && formData.quantity > 0 && (
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4 space-y-4">
-                  <h5 className="font-medium text-gray-800 flex items-center gap-2"><CreditCard size={18} className="text-blue-500" /> Détails du Paiement (Stock Initial)</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
-                    <select className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.paymentStatus} onChange={(e) => setFormData({...formData, paymentStatus: e.target.value})}>
-                        <option value="pending">NON PAYÉ (Crédit)</option>
-                        <option value="completed">PAYÉ (Immédiat)</option>
-                    </select>
-                  </div>
-                  {formData.paymentStatus === 'completed' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
-                        <select required className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankAccountId} onChange={(e) => setFormData({...formData, bankAccountId: e.target.value})}>
-                            <option value="">Sélectionner un compte</option>
-                            {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
-                        <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankFees} onChange={(e) => setFormData({...formData, bankFees: e.target.value})} placeholder="Optionnel" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="flex justify-end space-x-3 mt-6">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Enregistrer</button>
