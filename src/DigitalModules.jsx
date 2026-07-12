@@ -923,7 +923,12 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
     credits_to_deduct: 1,
     supplier_id: '',
     quantity: 1,
-    unit_price: 0
+    unit_price: 0,
+    new_product_name: '',
+    new_product_buy_price: 0,
+    new_product_sell_price: 0,
+    new_supplier_name: '',
+    new_supplier_phone: ''
   });
 
   const calculateEndDate = (startDateStr, months) => {
@@ -935,8 +940,34 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      let finalProductId = formData.product_id;
+      let finalSupplierId = formData.supplier_id;
+
+      if (formData.type === 'purchase' && formData.supplier_id === 'NEW_SUPPLIER') {
+        const { data: newSuppData, error: suppErr } = await supabase.from('digital_suppliers').insert([{
+          name: formData.new_supplier_name,
+          phone: formData.new_supplier_phone
+        }]).select();
+        if (suppErr) throw suppErr;
+        if (newSuppData && newSuppData[0]) finalSupplierId = newSuppData[0].id;
+      }
+
+      if ((formData.type === 'sale' || formData.type === 'purchase') && formData.product_id === 'NEW_PRODUCT') {
+        const { data: newProdData, error: prodErr } = await supabase.from('digital_inventory').insert([{
+          name: formData.new_product_name,
+          buy_price: parseFloat(formData.new_product_buy_price) || 0,
+          sell_price: parseFloat(formData.new_product_sell_price) || 0,
+          quantity: 0
+        }]).select();
+        if (prodErr) throw prodErr;
+        if (newProdData && newProdData[0]) {
+          finalProductId = newProdData[0].id;
+          digitalInventory.push(newProdData[0]);
+        }
+      }
+
       if (formData.type === 'sale' && !formData.id) {
-        const product = digitalInventory.find(i => i.id === formData.product_id);
+        const product = digitalInventory.find(i => i.id === finalProductId);
         const creditsToDeduct = parseInt(formData.credits_to_deduct) || 1;
         
         if (product && (product.quantity || 0) < creditsToDeduct) {
@@ -948,7 +979,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
         const dbSub = {
           customer_name: formData.customer_name,
           customer_phone: formData.customer_phone,
-          product_id: formData.product_id,
+          product_id: finalProductId,
           product_name: product ? product.name : 'Unknown',
           duration_months: parseInt(formData.duration_months),
           start_date: formData.date,
@@ -969,20 +1000,20 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
             amount: parseFloat(formData.amount),
             bank_account_id: formData.bank_account_id || null,
             subscription_id: insertedSub[0].id,
-            digital_product_id: formData.product_id || null,
+            digital_product_id: finalProductId || null,
             status: 'completed',
             notes: formData.notes || 'Abonnement Digital'
           };
           const { error: digTxErr } = await supabase.from('digital_transactions').insert([digTx]);
           if (digTxErr) throw digTxErr;
 
-          if (formData.product_id && product) {
+          if (finalProductId && product) {
             const newQty = (product.quantity || 0) - creditsToDeduct;
             await supabase.from('digital_inventory').update({ quantity: newQty }).eq('id', product.id);
           }
         }
       } else if (formData.type === 'purchase' && !formData.id) {
-        const product = digitalInventory.find(p => p.id === formData.product_id);
+        const product = digitalInventory.find(p => p.id === finalProductId);
         if (!product) return alert('Produit invalide');
         
         const totalAmount = parseFloat(formData.unit_price) * parseInt(formData.quantity);
@@ -992,8 +1023,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
           item_name: formData.item_name || `Achat stock: ${formData.quantity}x ${product.name}`,
           amount: totalAmount,
           bank_account_id: formData.bank_account_id || null,
-          digital_supplier_id: formData.supplier_id || null,
-          digital_product_id: formData.product_id,
+          digital_supplier_id: finalSupplierId || null,
+          digital_product_id: finalProductId,
           status: 'completed',
           notes: formData.notes || 'Réapprovisionnement'
         };
@@ -1001,7 +1032,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
         if (txErr) throw txErr;
 
         const newQuantity = (product.quantity || 0) + parseInt(formData.quantity);
-        const { error: invErr } = await supabase.from('digital_inventory').update({ quantity: newQuantity }).eq('id', formData.product_id);
+        const { error: invErr } = await supabase.from('digital_inventory').update({ quantity: newQuantity }).eq('id', finalProductId);
         if (invErr) throw invErr;
 
       } else {
@@ -1080,7 +1111,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
             <option value="purchase">Achats</option>
           </select>
           <button onClick={() => {
-            setFormData({ id: null, type: 'expense', amount: '', date: new Date().toISOString().split('T')[0], item_name: '', notes: '', bank_account_id: '', customer_name: '', customer_phone: '', product_id: '', duration_months: 1, credits_to_deduct: 1, supplier_id: '', quantity: 1, unit_price: 0 });
+            setFormData({ id: null, type: 'expense', amount: '', date: new Date().toISOString().split('T')[0], item_name: '', notes: '', bank_account_id: '', customer_name: '', customer_phone: '', product_id: '', duration_months: 1, credits_to_deduct: 1, supplier_id: '', quantity: 1, unit_price: 0, new_product_name: '', new_product_buy_price: 0, new_product_sell_price: 0, new_supplier_name: '', new_supplier_phone: '' });
             setShowForm(true);
           }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
             <Plus size={18} className="mr-2"/> Nouvelle Transaction
@@ -1123,8 +1154,28 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                     <select required className="w-full border-gray-300 rounded-lg p-2 border" value={formData.product_id} onChange={e => setFormData({...formData, product_id: e.target.value})}>
                       <option value="">Sélectionner produit...</option>
                       {digitalInventory.map(p => <option key={p.id} value={p.id}>{p.name} (Stock: {p.quantity||0})</option>)}
+                      <option value="NEW_PRODUCT" className="font-bold text-purple-600">➕ Ajouter un nouveau produit...</option>
                     </select>
                   </div>
+                  {formData.product_id === 'NEW_PRODUCT' && (
+                    <div className="md:col-span-2 lg:col-span-3 bg-purple-50 p-4 rounded-lg border border-purple-100 mb-2">
+                      <h4 className="font-semibold text-purple-800 mb-2">Détails du nouveau produit</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nom du produit</label>
+                          <input required type="text" className="w-full border p-2 rounded-lg" value={formData.new_product_name} onChange={e=>setFormData({...formData, new_product_name: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Prix d'achat standard</label>
+                          <input type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.new_product_buy_price} onChange={e=>setFormData({...formData, new_product_buy_price: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Prix de vente standard</label>
+                          <input type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.new_product_sell_price} onChange={e=>setFormData({...formData, new_product_sell_price: e.target.value})} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Durée (Mois)</label>
                     <select className="w-full border-gray-300 rounded-lg p-2 border" value={formData.duration_months} onChange={e => {
@@ -1159,8 +1210,24 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                     <select className="w-full border p-2 rounded-lg" value={formData.supplier_id} onChange={e=>setFormData({...formData, supplier_id:e.target.value})}>
                       <option value="">Aucun fournisseur</option>
                       {digitalSuppliers && digitalSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      <option value="NEW_SUPPLIER" className="font-bold text-blue-600">➕ Ajouter un nouveau fournisseur...</option>
                     </select>
                   </div>
+                  {formData.supplier_id === 'NEW_SUPPLIER' && (
+                    <div className="md:col-span-2 lg:col-span-3 bg-blue-50 p-4 rounded-lg border border-blue-100 mb-2">
+                      <h4 className="font-semibold text-blue-800 mb-2">Nouveau Fournisseur</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nom du fournisseur</label>
+                          <input required type="text" className="w-full border p-2 rounded-lg" value={formData.new_supplier_name} onChange={e=>setFormData({...formData, new_supplier_name: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
+                          <input type="text" className="w-full border p-2 rounded-lg" value={formData.new_supplier_phone} onChange={e=>setFormData({...formData, new_supplier_phone: e.target.value})} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Produit Digital</label>
                     <select required className="w-full border p-2 rounded-lg" value={formData.product_id} onChange={e=>{
@@ -1170,8 +1237,28 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                     }}>
                       <option value="">Sélectionner un produit</option>
                       {digitalInventory && digitalInventory.map(p => <option key={p.id} value={p.id}>{p.name} (Stock actuel: {p.quantity||0})</option>)}
+                      <option value="NEW_PRODUCT" className="font-bold text-purple-600">➕ Ajouter un nouveau produit...</option>
                     </select>
                   </div>
+                  {formData.product_id === 'NEW_PRODUCT' && (
+                    <div className="md:col-span-2 lg:col-span-3 bg-purple-50 p-4 rounded-lg border border-purple-100 mb-2">
+                      <h4 className="font-semibold text-purple-800 mb-2">Détails du nouveau produit</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nom du produit</label>
+                          <input required type="text" className="w-full border p-2 rounded-lg" value={formData.new_product_name} onChange={e=>setFormData({...formData, new_product_name: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Prix d'achat standard</label>
+                          <input type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.new_product_buy_price} onChange={e=>setFormData({...formData, new_product_buy_price: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Prix de vente standard</label>
+                          <input type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.new_product_sell_price} onChange={e=>setFormData({...formData, new_product_sell_price: e.target.value})} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Quantité à ajouter</label>
                     <input required type="number" min="1" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>setFormData({...formData, quantity:e.target.value})} />
