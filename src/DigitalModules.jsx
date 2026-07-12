@@ -360,6 +360,10 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
                   </select>
                 </div>
               )}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Login / Lien m3u / Notes</label>
+                <textarea className="w-full border-gray-300 rounded-lg p-2 border" rows="2" placeholder="Informations de connexion, lien m3u, etc." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}></textarea>
+              </div>
             </div>
             <div className="flex justify-end gap-3 mt-4">
               <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
@@ -906,41 +910,121 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     id: null,
-    type: 'sale',
+    type: 'expense',
     amount: '',
     date: new Date().toISOString().split('T')[0],
     item_name: '',
     notes: '',
-    bank_account_id: ''
+    bank_account_id: '',
+    customer_name: '',
+    customer_phone: '',
+    product_id: '',
+    duration_months: 1,
+    credits_to_deduct: 1,
+    supplier_id: '',
+    quantity: 1,
+    unit_price: 0
   });
+
+  const calculateEndDate = (startDateStr, months) => {
+    const d = new Date(startDateStr);
+    d.setMonth(d.getMonth() + parseInt(months));
+    return d.toISOString().split('T')[0];
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const txData = {
-        type: formData.type,
-        amount: parseFloat(formData.amount),
-        date: formData.date,
-        item_name: formData.item_name,
-        notes: formData.notes,
-        bank_account_id: formData.bank_account_id || null,
-        status: 'completed'
-      };
-      
-      let error;
-      if (formData.id) {
-        const { error: updateErr } = await supabase.from('digital_transactions').update(txData).eq('id', formData.id);
-        error = updateErr;
+      if (formData.type === 'sale' && !formData.id) {
+        const product = digitalInventory.find(i => i.id === formData.product_id);
+        const creditsToDeduct = parseInt(formData.credits_to_deduct) || 1;
+        
+        if (product && (product.quantity || 0) < creditsToDeduct) {
+          alert(`Stock insuffisant ! Le produit a ${product.quantity || 0} crédits, mais vous essayez d'en déduire ${creditsToDeduct}.`);
+          return;
+        }
+
+        const end_date = calculateEndDate(formData.date, formData.duration_months);
+        const dbSub = {
+          customer_name: formData.customer_name,
+          customer_phone: formData.customer_phone,
+          product_id: formData.product_id,
+          product_name: product ? product.name : 'Unknown',
+          duration_months: parseInt(formData.duration_months),
+          start_date: formData.date,
+          end_date: end_date,
+          amount_paid: parseFloat(formData.amount),
+          status: 'active',
+          notes: formData.notes
+        };
+
+        const { data: insertedSub, error: subErr } = await supabase.from('subscriptions').insert([dbSub]).select();
+        if (subErr) throw subErr;
+
+        if (insertedSub && insertedSub[0]) {
+          const digTx = {
+            date: formData.date,
+            type: 'sale',
+            item_name: formData.item_name || `Abo: ${product ? product.name : 'Unknown'} - ${formData.customer_name}`,
+            amount: parseFloat(formData.amount),
+            bank_account_id: formData.bank_account_id || null,
+            subscription_id: insertedSub[0].id,
+            digital_product_id: formData.product_id || null,
+            status: 'completed',
+            notes: formData.notes || 'Abonnement Digital'
+          };
+          const { error: digTxErr } = await supabase.from('digital_transactions').insert([digTx]);
+          if (digTxErr) throw digTxErr;
+
+          if (formData.product_id && product) {
+            const newQty = (product.quantity || 0) - creditsToDeduct;
+            await supabase.from('digital_inventory').update({ quantity: newQty }).eq('id', product.id);
+          }
+        }
+      } else if (formData.type === 'purchase' && !formData.id) {
+        const product = digitalInventory.find(p => p.id === formData.product_id);
+        if (!product) return alert('Produit invalide');
+        
+        const totalAmount = parseFloat(formData.unit_price) * parseInt(formData.quantity);
+        const tx = {
+          date: formData.date,
+          type: 'purchase',
+          item_name: formData.item_name || `Achat stock: ${formData.quantity}x ${product.name}`,
+          amount: totalAmount,
+          bank_account_id: formData.bank_account_id || null,
+          digital_supplier_id: formData.supplier_id || null,
+          digital_product_id: formData.product_id,
+          status: 'completed',
+          notes: formData.notes || 'Réapprovisionnement'
+        };
+        const { error: txErr } = await supabase.from('digital_transactions').insert([tx]);
+        if (txErr) throw txErr;
+
+        const newQuantity = (product.quantity || 0) + parseInt(formData.quantity);
+        const { error: invErr } = await supabase.from('digital_inventory').update({ quantity: newQuantity }).eq('id', formData.product_id);
+        if (invErr) throw invErr;
+
       } else {
-        const { error: insertErr } = await supabase.from('digital_transactions').insert([txData]);
-        error = insertErr;
+        const txData = {
+          type: formData.type === 'other_revenue' ? 'sale' : formData.type,
+          amount: parseFloat(formData.amount),
+          date: formData.date,
+          item_name: formData.item_name,
+          notes: formData.notes,
+          bank_account_id: formData.bank_account_id || null,
+          status: 'completed'
+        };
+        if (formData.id) {
+          const { error: updateErr } = await supabase.from('digital_transactions').update(txData).eq('id', formData.id);
+          if (updateErr) throw updateErr;
+        } else {
+          const { error: insertErr } = await supabase.from('digital_transactions').insert([txData]);
+          if (insertErr) throw insertErr;
+        }
       }
-      
-      if (error) throw error;
+
       setShowForm(false);
-      setFormData({
-        id: null, type: 'expense', amount: '', date: new Date().toISOString().split('T')[0], item_name: '', notes: '', bank_account_id: ''
-      });
+      window.location.reload();
     } catch (err) {
       console.error(err);
       alert('Erreur lors de la sauvegarde: ' + err.message);
@@ -996,7 +1080,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
             <option value="purchase">Achats</option>
           </select>
           <button onClick={() => {
-            setFormData({ id: null, type: 'expense', amount: '', date: new Date().toISOString().split('T')[0], item_name: '', notes: '', bank_account_id: '' });
+            setFormData({ id: null, type: 'expense', amount: '', date: new Date().toISOString().split('T')[0], item_name: '', notes: '', bank_account_id: '', customer_name: '', customer_phone: '', product_id: '', duration_months: 1, credits_to_deduct: 1, supplier_id: '', quantity: 1, unit_price: 0 });
             setShowForm(true);
           }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
             <Plus size={18} className="mr-2"/> Nouvelle Transaction
@@ -1007,25 +1091,109 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
       {showForm && (
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <div className="mb-4">
-            <h3 className="text-lg font-bold text-gray-800">Créer une Transaction Digitale (Manuelle)</h3>
+            <h3 className="text-lg font-bold text-gray-800">{formData.id ? 'Modifier la Transaction' : 'Nouvelle Opération Universelle'}</h3>
             <p className="text-sm text-purple-600 bg-purple-50 p-2 rounded mt-2">
-              <strong>Astuce :</strong> Les ventes doivent être créées depuis la page <strong>Abonnements</strong>, et les achats de stock depuis <strong>Fournisseurs</strong> (le système créera la transaction automatiquement). Utilisez ce formulaire uniquement pour les <strong>Autres Dépenses</strong> (Serveurs, Marketing) ou <strong>Autres Revenus</strong> divers.
+              <strong>Info :</strong> Depuis ce formulaire, vous pouvez créer directement des Abonnements, des achats de stocks, ou de simples transactions de dépenses/revenus.
             </p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type d'opération</label>
-                <select required className="w-full border p-2 rounded-lg bg-white" value={formData.type} onChange={e=>setFormData({...formData, type:e.target.value})}>
+                <select required className="w-full border p-2 rounded-lg bg-white" value={formData.type} onChange={e=>setFormData({...formData, type:e.target.value})} disabled={!!formData.id}>
+                  <option value="sale">Vente (Abonnement)</option>
+                  <option value="purchase">Achat de Stock (Fournisseur)</option>
                   <option value="expense">Autre Dépense (Sortie)</option>
-                  <option value="sale">Autre Revenu (Entrée)</option>
-                  <option value="purchase">Autre Achat</option>
+                  <option value="other_revenue">Autre Revenu (Entrée)</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Montant (MAD)</label>
-                <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} />
-              </div>
+
+              {formData.type === 'sale' && !formData.id && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nom du Client</label>
+                    <input required type="text" className="w-full border-gray-300 rounded-lg p-2 border" value={formData.customer_name} onChange={e => setFormData({...formData, customer_name: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone Client</label>
+                    <input type="text" className="w-full border-gray-300 rounded-lg p-2 border" value={formData.customer_phone} onChange={e => setFormData({...formData, customer_phone: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Produit Digital</label>
+                    <select required className="w-full border-gray-300 rounded-lg p-2 border" value={formData.product_id} onChange={e => setFormData({...formData, product_id: e.target.value})}>
+                      <option value="">Sélectionner produit...</option>
+                      {digitalInventory.map(p => <option key={p.id} value={p.id}>{p.name} (Stock: {p.quantity||0})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Durée (Mois)</label>
+                    <select className="w-full border-gray-300 rounded-lg p-2 border" value={formData.duration_months} onChange={e => {
+                      const val = parseInt(e.target.value);
+                      setFormData({...formData, duration_months: val, credits_to_deduct: val});
+                    }}>
+                      <option value={1}>1 Mois</option>
+                      <option value={3}>3 Mois</option>
+                      <option value={6}>6 Mois</option>
+                      <option value={12}>12 Mois (1 An)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Crédits à déduire</label>
+                    <input required type="number" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.credits_to_deduct} onChange={e => setFormData({...formData, credits_to_deduct: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Montant Payé (MAD)</label>
+                    <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} />
+                  </div>
+                  <div className="lg:col-span-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Login / Lien m3u / Notes (Abonnement)</label>
+                    <textarea className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" rows="2" placeholder="Informations de connexion, lien m3u, etc." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}></textarea>
+                  </div>
+                </>
+              )}
+
+              {formData.type === 'purchase' && !formData.id && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur (Optionnel)</label>
+                    <select className="w-full border p-2 rounded-lg" value={formData.supplier_id} onChange={e=>setFormData({...formData, supplier_id:e.target.value})}>
+                      <option value="">Aucun fournisseur</option>
+                      {digitalSuppliers && digitalSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Produit Digital</label>
+                    <select required className="w-full border p-2 rounded-lg" value={formData.product_id} onChange={e=>{
+                      const pid = e.target.value;
+                      const prod = digitalInventory?.find(p => p.id === pid);
+                      setFormData({ ...formData, product_id: pid, unit_price: prod ? prod.buy_price || 0 : 0 });
+                    }}>
+                      <option value="">Sélectionner un produit</option>
+                      {digitalInventory && digitalInventory.map(p => <option key={p.id} value={p.id}>{p.name} (Stock actuel: {p.quantity||0})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantité à ajouter</label>
+                    <input required type="number" min="1" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>setFormData({...formData, quantity:e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Prix Unitaire (MAD)</label>
+                    <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.unit_price} onChange={e=>setFormData({...formData, unit_price:e.target.value})} />
+                  </div>
+                  <div className="bg-gray-50 p-2 rounded-lg flex items-center border border-gray-200">
+                    <span className="text-gray-600 font-medium mr-2">Total :</span>
+                    <span className="text-lg font-bold text-red-600">{(parseFloat(formData.unit_price || 0) * parseInt(formData.quantity || 0)).toLocaleString()} MAD</span>
+                  </div>
+                </>
+              )}
+
+              {((formData.type === 'expense' || formData.type === 'other_revenue') || formData.id) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Montant (MAD)</label>
+                  <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} disabled={!!formData.id && (formData.type === 'sale' || formData.type === 'purchase')} />
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
                 <input required type="date" className="w-full border p-2 rounded-lg" value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} />
@@ -1039,7 +1207,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                   ))}
                 </select>
               </div>
-              <div className="lg:col-span-2">
+              <div className="lg:col-span-3">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description / Motif</label>
                 <input required type="text" placeholder="Ex: Achat licence serveur, Vente abonnement..." className="w-full border p-2 rounded-lg" value={formData.item_name} onChange={e=>setFormData({...formData, item_name:e.target.value})} />
               </div>
