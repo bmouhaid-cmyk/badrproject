@@ -49,7 +49,9 @@ export const DigitalDashboard = ({ subscriptions = [], digitalTransactions = [],
       const prod = digitalInventory.find(p => p.id === sub.product_id) || digitalInventory.find(p => p.name === sub.product_name);
       if (prod) {
         const costFor1Credit = parseFloat(prod.buy_price || 0);
-        const numberOfCredits = parseInt(sub.duration_months) || 1;
+        const numberOfCredits = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
+            ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+            : parseInt(sub.duration_months) || 1;
         const totalCost = costFor1Credit * numberOfCredits;
         totalNetProfit += (rev - totalCost);
       } else {
@@ -248,6 +250,9 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       const end_date = calculateEndDate(formData.start_date, formData.duration_months);
       const product = digitalInventory.find(i => i.id === formData.product_id);
       
+      const creditsToDeduct = parseInt(formData.credits_to_deduct) || parseInt(formData.duration_months);
+      const notesSuffix = creditsToDeduct !== parseInt(formData.duration_months) ? ` [CRD:${creditsToDeduct}]` : '';
+
       const dbSub = {
         customer_name: formData.customer_name,
         customer_phone: formData.customer_phone,
@@ -258,7 +263,7 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
         end_date: end_date,
         amount_paid: parseFloat(formData.amount_paid),
         status: formData.status,
-        notes: formData.notes
+        notes: (formData.notes || '') + (formData.id ? '' : notesSuffix) // only append on insert
       };
 
       if (formData.id) {
@@ -323,7 +328,10 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       };
       const { error: refundErr } = await supabase.from('digital_transactions').insert([refundTx]);
       
-      const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock ? (Abonnement de ${sub.duration_months} mois)`, sub.duration_months);
+      const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
+          ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+          : parseInt(sub.duration_months);
+      const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock ? (Abonnement de ${sub.duration_months} mois, ${creditsUsed} crédits déduits)`, creditsUsed);
       if (restockAmount !== null && !isNaN(restockAmount) && parseInt(restockAmount) > 0 && sub.product_id) {
         const prod = digitalInventory?.find(p => p.id === sub.product_id);
         if (prod) {
@@ -335,7 +343,10 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       else alert("Abonnement annulé, remboursement enregistré, et stock mis à jour si demandé.");
     } else if (action && action.toLowerCase() === 's') {
       if (window.confirm("Êtes-vous sûr de vouloir supprimer définitivement cet abonnement ?")) {
-        const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock avant suppression ? (Abonnement de ${sub.duration_months} mois)`, sub.duration_months);
+        const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
+            ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+            : parseInt(sub.duration_months);
+        const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock avant suppression ? (Abonnement de ${sub.duration_months} mois, ${creditsUsed} crédits déduits)`, creditsUsed);
         if (restockAmount !== null && !isNaN(restockAmount) && parseInt(restockAmount) > 0 && sub.product_id) {
           const prod = digitalInventory?.find(p => p.id === sub.product_id);
           if (prod) {
@@ -520,7 +531,11 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
                   <td className="px-6 py-4 text-xs">
                     Du: {new Date(s.start_date).toLocaleDateString()} <span className="text-gray-400">à {new Date(s.start_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span><br/>
                     Au: <span className={diffDays <= 7 && isActive(s) ? 'text-red-500 font-bold' : ''}>{new Date(s.end_date).toLocaleDateString()}</span><br/>
-                    <span className="text-purple-600 font-medium">({s.duration_months} Crédits utilisés)</span>
+                    <span className="text-purple-600 font-medium">({
+                        s.notes && s.notes.match(/\[CRD:(\d+)\]/) 
+                          ? parseInt(s.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                          : s.duration_months
+                    } Crédits utilisés)</span>
                   </td>
                   <td className="px-6 py-4 font-mono font-bold">{parseFloat(s.amount_paid || 0).toLocaleString()} MAD</td>
                   <td className="px-6 py-4">{statusBadge}</td>
@@ -1461,7 +1476,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
 
       if (formData.type === 'sale' && !formData.id) {
         const product = digitalInventory.find(i => i.id === finalProductId);
-        const creditsToDeduct = parseInt(formData.credits_to_deduct) || 1;
+        const creditsToDeduct = parseInt(formData.credits_to_deduct) || parseInt(formData.duration_months) || 1;
         
         if (product && (product.quantity || 0) < creditsToDeduct) {
           alert(`Stock insuffisant ! Le produit a ${product.quantity || 0} crédits, mais vous essayez d'en déduire ${creditsToDeduct}.`);
@@ -1469,6 +1484,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
         }
 
         const end_date = calculateEndDate(formData.date, formData.duration_months);
+        const notesSuffix = creditsToDeduct !== parseInt(formData.duration_months) ? ` [CRD:${creditsToDeduct}]` : '';
+
         const dbSub = {
           customer_name: formData.customer_name,
           customer_phone: formData.customer_phone,
@@ -1479,7 +1496,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
           end_date: end_date,
           amount_paid: parseFloat(formData.amount),
           status: 'active',
-          notes: formData.notes
+          notes: (formData.notes || '') + notesSuffix
         };
 
         const { data: insertedSub, error: subErr } = await supabase.from('subscriptions').insert([dbSub]).select();
@@ -1635,7 +1652,10 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
          if (t.subscription_id) {
              const sub = subscriptions?.find(s => s.id === t.subscription_id);
              const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
-             const cost = (parseFloat(prod?.buy_price || 0)) * (parseInt(sub?.duration_months || 1));
+               const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
+                   ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                   : parseInt(sub?.duration_months || 1);
+               const cost = (parseFloat(prod?.buy_price || 0)) * creditsUsed;
              netProfitCredits += (parseFloat(t.amount || 0) - cost);
          } else {
              const prod = digitalInventory?.find(p => p.id === t.digital_product_id);
@@ -2034,7 +2054,9 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                               const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
                               if (prod) {
                                   isProductSale = true;
-                                  creditsUsed = parseInt(sub?.duration_months || 1);
+                                  creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
+                                      ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                                      : parseInt(sub?.duration_months || 1);
                                   buyPricePerCredit = parseFloat(prod?.buy_price || 0);
                                   sellPricePerCredit = parseFloat(t.amount || 0) / creditsUsed;
                               }
@@ -2083,7 +2105,10 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                           if (t.subscription_id) {
                               const sub = subscriptions?.find(s => s.id === t.subscription_id);
                               const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
-                              const cost = (parseFloat(prod?.buy_price || 0)) * (parseInt(sub?.duration_months || 1));
+                              const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
+                                  ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                                  : parseInt(sub?.duration_months || 1);
+                              const cost = (parseFloat(prod?.buy_price || 0)) * creditsUsed;
                               rowProfit = (parseFloat(t.amount || 0) - cost);
                           } else {
                               const prod = digitalInventory?.find(p => p.id === t.digital_product_id);

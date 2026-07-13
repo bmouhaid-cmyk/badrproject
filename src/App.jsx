@@ -981,19 +981,19 @@ function App() {
 
   // --- Derived State (Metrics) ---
   const digitalIncome = digitalTransactions
-    ? digitalTransactions.filter(t => t.type === 'sale' && t.status === 'completed').reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0)
+    ? digitalTransactions.filter(t => t.type === 'sale' && t.status === 'completed').reduce((acc, curr) => acc + Math.abs(parseFloat(curr.amount || 0)), 0)
     : 0;
 
   const totalIncome = transactions
     .filter(t => t.type === 'sale' && t.status === 'completed')
-    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0) + digitalIncome;
+    .reduce((acc, curr) => acc + Math.abs(parseFloat(curr.amount || 0)), 0) + digitalIncome;
 
   const operatingExpenses = transactions
     .reduce((acc, curr) => {
       if (curr.type === 'expense') {
-        // Only include expense if completed
-        if (curr.status === 'completed') {
-          return acc + parseFloat(curr.amount || 0);
+        // Only include expense if completed and NOT a Supplier Payment (to avoid double-counting with totalPurchases)
+        if (curr.status === 'completed' && curr.category !== 'Supplier Payment') {
+          return acc + Math.abs(parseFloat(curr.amount || 0));
         }
       } else if (curr.type === 'sale') {
         const delivery = parseFloat(curr.delivery_cost || 0);
@@ -1009,7 +1009,7 @@ function App() {
     }, 0);
 
   const digitalExpenses = digitalTransactions
-    ? digitalTransactions.filter(t => t.type === 'expense' && t.status === 'completed').reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0)
+    ? digitalTransactions.filter(t => t.type === 'expense' && t.category !== 'Supplier Payment' && t.status === 'completed').reduce((acc, curr) => acc + Math.abs(parseFloat(curr.amount || 0)), 0)
     : 0;
 
   const totalOperatingExpenses = operatingExpenses + digitalExpenses;
@@ -1027,12 +1027,12 @@ function App() {
 
   // Calculate Total Purchases (for Cash Flow / Total Expenses display)
   const digitalPurchases = digitalTransactions
-    ? digitalTransactions.filter(t => t.type === 'purchase' && t.status === 'completed').reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0)
+    ? digitalTransactions.filter(t => t.type === 'purchase' && t.status === 'completed').reduce((acc, curr) => acc + Math.abs(parseFloat(curr.amount || 0)), 0)
     : 0;
 
   const totalPurchases = transactions
     .filter(t => t.type === 'purchase' && t.status === 'completed')
-    .reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0) + digitalPurchases;
+    .reduce((acc, curr) => acc + Math.abs(parseFloat(curr.amount || 0)), 0) + digitalPurchases;
 
   // Total Expenses for Display (Cash Flow Basis: Operating Expenses + Purchases)
   // This matches the "previous version" logic as requested.
