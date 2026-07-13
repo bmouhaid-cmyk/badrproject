@@ -2692,7 +2692,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
   const uniqueCategories = [...new Set(inventory.map(i => i.category).filter(Boolean))];
   const [statusFilter, setStatusFilter] = useState('Tous les Statuts');
   const [formData, setFormData] = useState({
-    name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'pending', bankAccountId: '', bankFees: ''
+    name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'none', bankAccountId: '', bankFees: ''
   });
 
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
@@ -2748,7 +2748,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
         if (!error && data) {
           const newResult = data[0];
           setInventory(prev => [...prev, newResult]);
-          if (parseInt(dbItem.quantity) > 0) {
+          if (parseInt(dbItem.quantity) > 0 && formData.paymentStatus !== 'none') {
             const transaction = {
               date: new Date().toISOString().split('T')[0],
               type: 'purchase', status: formData.paymentStatus, category: 'Initial Stock',
@@ -2779,7 +2779,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
       }
       if (error) { alert('Error saving item: ' + error.message); return; }
       setShowForm(false);
-      setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'pending', bankAccountId: '', bankFees: '' });
+      setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'none', bankAccountId: '', bankFees: '' });
       setIsEditing(false);
     } catch (err) { alert('An unexpected error occurred.'); }
   };
@@ -2964,7 +2964,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
           <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
             <Download size={16} /><span>Exporter</span>
           </button>
-          <button onClick={() => { setIsEditing(false); setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'pending', bankAccountId: '', bankFees: '' }); setShowForm(true); }} className="flex items-center space-x-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-lg font-medium text-sm whitespace-nowrap">
+          <button onClick={() => { setIsEditing(false); setFormData({ name: '', supplier: '', category: '', buyPrice: '', sellPrice: '', quantity: '', lowStockThreshold: 5, paymentStatus: 'none', bankAccountId: '', bankFees: '' }); setShowForm(true); }} className="flex items-center space-x-2 px-4 py-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white rounded-lg font-medium text-sm whitespace-nowrap">
             <Plus size={16} /><span>Nouveau Produit / Variante</span>
           </button>
           <button onClick={() => openPurchaseModal()} className="flex items-center space-x-2 px-4 py-2 bg-[#f4a261] hover:bg-[#e76f51] text-white rounded-lg font-medium text-sm whitespace-nowrap">
@@ -3021,6 +3021,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
                     <select className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.paymentStatus} onChange={(e) => setFormData({...formData, paymentStatus: e.target.value})}>
+                        <option value="none">Ignorer (Stock Existant)</option>
                         <option value="pending">NON PAYÉ (Crédit)</option>
                         <option value="completed">PAYÉ (Immédiat)</option>
                     </select>
