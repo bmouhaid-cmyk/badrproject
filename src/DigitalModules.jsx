@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
-  Users, Package, ArrowRightLeft, Landmark, Truck, Search, Plus, Edit, Trash2, X, Download, Filter, Save, AlertTriangle, CheckCircle, Clock, WalletCards, ArrowDown, ArrowUp, Wallet, Settings, FileText, Share2, Printer, Activity, History
+  Users, Package, ArrowRightLeft, Landmark, Truck, Search, Plus, Edit, Trash2, X, Download, Filter, Save, AlertTriangle, CheckCircle, Clock, WalletCards, ArrowDown, ArrowUp, Wallet, Settings, FileText, Share2, Printer, Activity, History, CreditCard
 } from 'lucide-react';
 import { 
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell 
@@ -555,6 +555,7 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
     product_id: defaultProductId,
     quantity: 1,
     unit_price: 0,
+    amount_paid: '',
     bank_account_id: ''
   });
 
@@ -565,7 +566,8 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
     const prod = digitalInventory?.find(p => p.id === pid);
     const up = prod ? prod.buy_price || 0 : 0;
     const q = formData.quantity || 1;
-    setFormData({ ...formData, product_id: pid, unit_price: up, total_price: (parseFloat(up) * parseInt(q)).toFixed(2) });
+    const tp = (parseFloat(up) * parseInt(q)).toFixed(2);
+    setFormData({ ...formData, product_id: pid, unit_price: up, total_price: tp, amount_paid: tp });
   };
 
   const handleSubmit = async (e) => {
@@ -580,19 +582,37 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
       if (invErr) throw invErr;
       
       const totalAmount = formData.total_price !== undefined ? parseFloat(formData.total_price) : (parseFloat(formData.unit_price) * parseInt(formData.quantity));
+      
+      const transactions = [];
       const tx = {
         date: new Date().toISOString(),
         type: 'purchase',
         item_name: `Achat stock: ${formData.quantity}x ${product.name}`,
         amount: totalAmount,
-        bank_account_id: formData.bank_account_id || null,
+        bank_account_id: null, // Purchases on credit don't deduct from bank directly, the payment does
         digital_supplier_id: formData.supplier_id || null,
         digital_product_id: formData.product_id,
         status: 'completed',
-        notes: 'Réapprovisionnement automatique'
+        notes: 'Achat de stock (Réapprovisionner Stock)'
       };
+      transactions.push(tx);
+
+      const paidAmount = parseFloat(formData.amount_paid || 0);
+      if (paidAmount > 0 && formData.bank_account_id) {
+        transactions.push({
+          date: new Date().toISOString(),
+          type: 'supplier_payment',
+          item_name: `Paiement Fournisseur (Réapprovisionnement: ${product.name})`,
+          amount: paidAmount,
+          bank_account_id: formData.bank_account_id,
+          digital_supplier_id: formData.supplier_id || null,
+          digital_product_id: formData.product_id,
+          status: 'completed',
+          notes: `Paiement d'Achat de stock`
+        });
+      }
       
-      const { error: txErr } = await supabase.from('digital_transactions').insert([tx]);
+      const { error: txErr } = await supabase.from('digital_transactions').insert(transactions);
       if (txErr) throw txErr;
       
       alert('Stock réapprovisionné et transaction enregistrée avec succès !');
@@ -630,7 +650,8 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
             <input required type="number" min="1" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>{
               const q = e.target.value;
               const up = formData.unit_price || 0;
-              setFormData({...formData, quantity: q, total_price: q ? (parseFloat(up) * parseInt(q)).toFixed(2) : formData.total_price});
+              const tp = q ? (parseFloat(up) * parseInt(q)).toFixed(2) : formData.total_price;
+              setFormData({...formData, quantity: q, total_price: tp, amount_paid: tp});
             }} />
           </div>
           <div className="flex gap-4 mt-4">
@@ -651,20 +672,132 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
               }} />
             </div>
           </div>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Paiement depuis (Compte)</label>
+              <select className="w-full border p-2 rounded-lg" value={formData.bank_account_id} onChange={e=>{
+                const bankId = e.target.value;
+                setFormData({...formData, bank_account_id: bankId, amount_paid: bankId ? formData.total_price : 0});
+              }}>
+                <option value="">À crédit (Aucun paiement immédiat)</option>
+                {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Montant Payé (MAD)</label>
+              <input type="number" step="0.01" className="w-full border p-2 rounded-lg bg-gray-50" disabled={!formData.bank_account_id} value={formData.amount_paid} onChange={e=>setFormData({...formData, amount_paid:e.target.value})} />
+            </div>
+          </div>
+          <div className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border border-gray-200 mt-2">
+            <span className="text-gray-600 font-medium">Récapitulatif :</span>
+            <span className="text-gray-600">
+              {formData.bank_account_id && parseFloat(formData.amount_paid) > 0 ? `Paiement de ${formData.amount_paid} MAD` : 'Achat à crédit'}
+            </span>
+          </div>
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">Annuler</button>
+            <button type="submit" className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center hover:bg-purple-700"><Save size={18} className="mr-2"/> Confirmer l'Achat</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+const DigitalPaymentModal = ({ isOpen, onClose, digitalSuppliers, bankAccounts, digitalTransactions, supabase }) => {
+  const [formData, setFormData] = useState({
+    supplier_id: '',
+    amount: '',
+    fees: '',
+    bank_account_id: ''
+  });
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const supplier = digitalSuppliers.find(s => s.id === formData.supplier_id);
+      if (!supplier) return alert('Fournisseur invalide');
+
+      const transactionsToInsert = [];
+      
+      transactionsToInsert.push({
+        date: new Date().toISOString(),
+        type: 'supplier_payment',
+        item_name: `Paiement Fournisseur: ${supplier.name}`,
+        amount: parseFloat(formData.amount),
+        bank_account_id: formData.bank_account_id,
+        digital_supplier_id: formData.supplier_id,
+        status: 'completed',
+        notes: `Paiement effectué pour ${supplier.name}`
+      });
+
+      if (formData.fees && parseFloat(formData.fees) > 0) {
+        transactionsToInsert.push({
+          date: new Date().toISOString(),
+          type: 'expense',
+          item_name: `Frais bancaires`,
+          amount: parseFloat(formData.fees),
+          bank_account_id: formData.bank_account_id,
+          digital_supplier_id: null,
+          category: 'Frais Bancaires',
+          status: 'completed',
+          notes: `Frais de paiement pour ${supplier.name}`
+        });
+      }
+
+      const { error } = await supabase.from('digital_transactions').insert(transactionsToInsert);
+      if (error) throw error;
+
+      alert('Paiement enregistré avec succès');
+      onClose();
+    } catch (error) {
+      console.error(error);
+      alert('Erreur: ' + error.message);
+    }
+  };
+
+  const getSupplierBalance = (supplierId) => {
+    const purchases = digitalTransactions?.filter(t => t.type === 'purchase' && t.digital_supplier_id === supplierId).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) || 0;
+    const paid = digitalTransactions?.filter(t => t.type === 'supplier_payment' && t.digital_supplier_id === supplierId).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) || 0;
+    return purchases - paid;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+          <h3 className="text-lg font-bold text-gray-800 flex items-center"><CreditCard className="mr-2 text-indigo-600"/> Nouveau Paiement (Panel)</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Paiement depuis (Compte)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur</label>
+            <select required className="w-full border p-2 rounded-lg" value={formData.supplier_id} onChange={e=>setFormData({...formData, supplier_id:e.target.value})}>
+              <option value="">Sélectionner un fournisseur</option>
+              {digitalSuppliers && digitalSuppliers.map(s => <option key={s.id} value={s.id}>{s.name} (Reste: {getSupplierBalance(s.id).toFixed(2)} MAD)</option>)}
+            </select>
+          </div>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Montant (MAD)</label>
+              <input required type="number" step="0.01" min="0.01" className="w-full border p-2 rounded-lg" value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} />
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires</label>
+              <input type="number" step="0.01" min="0" placeholder="Optionnel" className="w-full border p-2 rounded-lg" value={formData.fees} onChange={e=>setFormData({...formData, fees:e.target.value})} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire Source</label>
             <select required className="w-full border p-2 rounded-lg" value={formData.bank_account_id} onChange={e=>setFormData({...formData, bank_account_id:e.target.value})}>
               <option value="">Sélectionner un compte/caisse</option>
               {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
-          <div className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border border-gray-200 mt-2">
-            <span className="text-gray-600 font-medium">Récapitulatif :</span>
-            <span className="text-gray-600">Enregistrement d'achat de stock.</span>
-          </div>
           <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
             <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">Annuler</button>
-            <button type="submit" className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center hover:bg-purple-700"><Save size={18} className="mr-2"/> Confirmer l'Achat</button>
+            <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg flex items-center hover:bg-indigo-700"><Save size={18} className="mr-2"/> Confirmer le Paiement</button>
           </div>
         </form>
       </div>
@@ -987,14 +1120,11 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
     const account = bankAccounts.find(b => b.id === accountId);
     if (!account) return 0;
     
-    // Start with 0 (not initial_balance) because we want to see how much DIGITAL contributed, 
-    // OR start with initial_balance if we want to treat it as a true total.
-    // Let's use 0 so it's strictly "Digital Treasury Flow" for that account.
     let balance = 0; 
     digitalTransactions.forEach(tx => {
       if (tx.bank_account_id === accountId) {
         if (tx.type === 'sale') balance += parseFloat(tx.amount || 0);
-        else if (tx.type === 'purchase' || tx.type === 'expense') balance -= parseFloat(tx.amount || 0);
+        else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'supplier_payment') balance -= parseFloat(tx.amount || 0);
       }
     });
     return balance;
@@ -1007,7 +1137,7 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
     
   const trueTotalSorties = digitalTransactions
-    .filter(t => t.type === 'purchase' || t.type === 'expense')
+    .filter(t => t.bank_account_id && (t.type === 'purchase' || t.type === 'expense' || t.type === 'supplier_payment'))
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
   const handleAddAccount = async (e) => {
@@ -1380,18 +1510,36 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
         if (!product) return alert('Produit invalide');
         
         const totalAmount = formData.total_price !== undefined ? parseFloat(formData.total_price) : (parseFloat(formData.unit_price) * parseInt(formData.quantity));
+        const transactions = [];
         const tx = {
           date: formData.date,
           type: 'purchase',
           item_name: formData.item_name || `Achat stock: ${formData.quantity}x ${product.name}`,
           amount: totalAmount,
-          bank_account_id: formData.bank_account_id || null,
+          bank_account_id: null,
           digital_supplier_id: finalSupplierId || null,
           digital_product_id: finalProductId,
           status: 'completed',
           notes: formData.notes || 'Réapprovisionnement'
         };
-        const { error: txErr } = await supabase.from('digital_transactions').insert([tx]);
+        transactions.push(tx);
+
+        const paidAmount = parseFloat(formData.amount_paid || 0);
+        if (paidAmount > 0 && formData.bank_account_id) {
+          transactions.push({
+            date: formData.date,
+            type: 'supplier_payment',
+            item_name: `Paiement Fournisseur (Réapprovisionnement: ${product.name})`,
+            amount: paidAmount,
+            bank_account_id: formData.bank_account_id,
+            digital_supplier_id: finalSupplierId || null,
+            digital_product_id: finalProductId,
+            status: 'completed',
+            notes: `Paiement direct d'Achat de stock`
+          });
+        }
+
+        const { error: txErr } = await supabase.from('digital_transactions').insert(transactions);
         if (txErr) throw txErr;
 
         const newQuantity = (product.quantity || 0) + parseInt(formData.quantity);
@@ -1456,7 +1604,11 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
     const matchesItem = itemSearch === '' || (t.item_name && t.item_name.toLowerCase().includes(itemSearch.toLowerCase()));
     
     if (!matchesSearch || !matchesItem) return false;
-    if (typeFilter !== 'allTypes' && t.type !== typeFilter) return false;
+      if (typeFilter !== 'allTypes') {
+        if (typeFilter === 'expense' && !['expense', 'supplier_payment', 'purchase'].includes(t.type)) return false;
+        if (typeFilter === 'sale' && !['sale', 'other_revenue'].includes(t.type)) return false;
+        if (typeFilter !== 'expense' && typeFilter !== 'sale' && t.type !== typeFilter) return false;
+      }
     if (statusFilter !== 'allStatuses' && t.status !== statusFilter) return false;
     
     if (dateFrom && new Date(t.date) < new Date(dateFrom)) return false;
@@ -1699,7 +1851,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                       const prod = digitalInventory?.find(p => p.id === pid);
                       const up = prod ? prod.buy_price || 0 : 0;
                       const q = formData.quantity || 1;
-                      setFormData({ ...formData, product_id: pid, unit_price: up, total_price: (parseFloat(up) * parseInt(q)).toFixed(2) });
+                      const tp = (parseFloat(up) * parseInt(q)).toFixed(2);
+                      setFormData({ ...formData, product_id: pid, unit_price: up, total_price: tp, amount_paid: tp });
                     }}>
                       <option value="">Sélectionner un produit</option>
                       {digitalInventory && digitalInventory.map(p => <option key={p.id} value={p.id}>{p.name} (Stock actuel: {p.quantity||0})</option>)}
@@ -1734,7 +1887,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                     <input required type="number" min="1" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>{
                       const q = e.target.value;
                       const up = formData.unit_price || 0;
-                      setFormData({...formData, quantity: q, total_price: q ? (parseFloat(up) * parseInt(q)).toFixed(2) : formData.total_price});
+                      const tp = q ? (parseFloat(up) * parseInt(q)).toFixed(2) : formData.total_price;
+                      setFormData({...formData, quantity: q, total_price: tp, amount_paid: tp});
                     }} />
                   </div>
                   <div className="grid grid-cols-2 gap-4 mt-4 mb-2">
@@ -1743,7 +1897,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                       <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.unit_price} onChange={e=>{
                         const up = e.target.value;
                         const q = formData.quantity || 1;
-                        setFormData({...formData, unit_price: up, total_price: up ? (parseFloat(up) * parseInt(q)).toFixed(2) : ''});
+                        const tp = up ? (parseFloat(up) * parseInt(q)).toFixed(2) : '';
+                        setFormData({...formData, unit_price: up, total_price: tp, amount_paid: tp});
                       }} />
                     </div>
                     <div>
@@ -1751,7 +1906,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                       <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.total_price !== undefined ? formData.total_price : (parseFloat(formData.unit_price || 0) * parseInt(formData.quantity || 0))} onChange={e=>{
                         const tp = e.target.value;
                         const q = formData.quantity || 1;
-                        setFormData({...formData, total_price: tp, unit_price: tp ? (parseFloat(tp) / parseInt(q)).toFixed(2) : ''});
+                        setFormData({...formData, total_price: tp, unit_price: tp ? (parseFloat(tp) / parseInt(q)).toFixed(2) : '', amount_paid: tp});
                       }} />
                     </div>
                   </div>
@@ -1771,13 +1926,26 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
-                <select required className="w-full border p-2 rounded-lg bg-white" value={formData.bank_account_id} onChange={e=>setFormData({...formData, bank_account_id:e.target.value})}>
-                  <option value="">Sélectionner un compte</option>
+                <select required={formData.type !== 'purchase'} className="w-full border p-2 rounded-lg bg-white" value={formData.bank_account_id} onChange={e=>{
+                  const val = e.target.value;
+                  if (formData.type === 'purchase') {
+                    setFormData({...formData, bank_account_id: val, amount_paid: val ? formData.total_price : 0});
+                  } else {
+                    setFormData({...formData, bank_account_id: val});
+                  }
+                }}>
+                  <option value="">{formData.type === 'purchase' ? 'À crédit (Aucun paiement immédiat)' : 'Sélectionner un compte'}</option>
                   {bankAccounts && bankAccounts.map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </select>
               </div>
+              {formData.type === 'purchase' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Montant Payé (MAD)</label>
+                  <input type="number" step="0.01" className="w-full border p-2 rounded-lg bg-gray-50" disabled={!formData.bank_account_id} value={formData.amount_paid} onChange={e=>setFormData({...formData, amount_paid:e.target.value})} />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
                 <select required className="w-full border p-2 rounded-lg bg-white" value={formData.status} onChange={e=>setFormData({...formData, status:e.target.value})}>
@@ -1956,10 +2124,81 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
     </div>
   );
 }
+const DigitalSupplierHistoryModal = ({ isOpen, onClose, supplier, transactions, bankAccounts }) => {
+  if (!isOpen || !supplier) return null;
+
+  const supplierTx = transactions?.filter(t => 
+    t.digital_supplier_id === supplier.id && 
+    (t.type === 'purchase' || t.type === 'supplier_payment')
+  ).sort((a, b) => new Date(b.date) - new Date(a.date)) || [];
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
+          <h3 className="text-lg font-bold text-gray-800 flex items-center"><History className="mr-2 text-indigo-600"/> Historique: {supplier.name}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          {supplierTx.length === 0 ? (
+            <p className="text-center text-gray-500 py-8">Aucun historique trouvé pour ce fournisseur.</p>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-left text-sm text-gray-600">
+                <thead className="bg-gray-50 border-b text-gray-700">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Date</th>
+                    <th className="px-4 py-3 font-semibold">Type</th>
+                    <th className="px-4 py-3 font-semibold">Détails</th>
+                    <th className="px-4 py-3 font-semibold">Compte / Caisse</th>
+                    <th className="px-4 py-3 font-semibold text-right">Montant</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {supplierTx.map(t => {
+                    const isPayment = t.type === 'supplier_payment';
+                    const bank = bankAccounts?.find(b => b.id === t.bank_account_id);
+                    return (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div>{new Date(t.date).toLocaleDateString()}</div>
+                          <div className="text-xs text-gray-400">{new Date(t.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${isPayment ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
+                            {isPayment ? 'Paiement' : 'Achat'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-800">{t.item_name || 'Transaction'}</p>
+                          {t.notes && <p className="text-xs text-gray-500">{t.notes}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {bank ? bank.name : '-'}
+                        </td>
+                        <td className={`px-4 py-3 text-right font-bold font-mono ${isPayment ? 'text-green-600' : 'text-purple-600'}`}>
+                          {isPayment ? '+' : '-'}{parseFloat(t.amount).toLocaleString('fr-FR')} MAD
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions, digitalInventory, bankAccounts, supabase, t }) => {
   const [showForm, setShowForm] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedHistorySupplier, setSelectedHistorySupplier] = useState(null);
   const [activeSupplierId, setActiveSupplierId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({ id: null, name: '', contact: '', email: '', phone: '', notes: '' });
@@ -2010,6 +2249,9 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={() => setShowPaymentModal(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center shadow-sm">
+            <CreditCard size={18} className="mr-2"/> Paiement
+          </button>
           <button onClick={() => { setFormData({ id: null, name: '', contact: '', email: '', phone: '', notes: '' }); setShowForm(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
             <Plus size={18} className="mr-2"/> Nouveau Fournisseur
           </button>
@@ -2075,6 +2317,23 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
         defaultSupplierId={activeSupplierId}
       />
 
+      <DigitalPaymentModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        digitalSuppliers={digitalSuppliers}
+        bankAccounts={bankAccounts}
+        digitalTransactions={digitalTransactions}
+        supabase={supabase}
+      />
+
+      <DigitalSupplierHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => { setShowHistoryModal(false); setSelectedHistorySupplier(null); }}
+        supplier={selectedHistorySupplier}
+        transactions={digitalTransactions}
+        bankAccounts={bankAccounts}
+      />
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         <table className="w-full text-left text-sm text-gray-600">
           <thead className="bg-gray-50 border-b border-gray-200 text-gray-700">
@@ -2083,6 +2342,8 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
               <th className="px-6 py-4 font-semibold">Contact / Téléphone</th>
               <th className="px-6 py-4 font-semibold">Notes / Lien</th>
               <th className="px-6 py-4 font-semibold text-right">Achats Totaux (MAD)</th>
+              <th className="px-6 py-4 font-semibold text-right">Total Payé (MAD)</th>
+              <th className="px-6 py-4 font-semibold text-right">Reste (MAD)</th>
               <th className="px-6 py-4 font-semibold text-right">Actions</th>
             </tr>
           </thead>
@@ -2093,6 +2354,12 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
                     .filter(t => t.type === 'purchase' && t.digital_supplier_id === item.id)
                     .reduce((acc, t) => acc + parseFloat(t.amount || 0), 0)
                 : 0;
+              const totalPaid = digitalTransactions
+                ? digitalTransactions
+                    .filter(t => t.type === 'supplier_payment' && t.digital_supplier_id === item.id)
+                    .reduce((acc, t) => acc + parseFloat(t.amount || 0), 0)
+                : 0;
+              const balance = totalPurchases - totalPaid;
 
               return (
                 <tr key={item.id} className="hover:bg-gray-50">
@@ -2100,7 +2367,10 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
                   <td className="px-6 py-4">{item.contact || 'N/A'}<br/><span className="text-xs text-gray-500">{item.phone}</span></td>
                   <td className="px-6 py-4 text-xs max-w-xs truncate">{item.notes}</td>
                   <td className="px-6 py-4 text-right font-mono text-purple-600 font-bold">{formatCurrency(totalPurchases)}</td>
+                  <td className="px-6 py-4 text-right font-mono text-green-600 font-bold">{formatCurrency(totalPaid)}</td>
+                  <td className="px-6 py-4 text-right font-mono text-red-600 font-bold">{formatCurrency(balance)}</td>
                   <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                    <button onClick={() => { setSelectedHistorySupplier(item); setShowHistoryModal(true); }} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Historique"><History size={16}/></button>
                     <button onClick={() => { setActiveSupplierId(item.id); setShowPurchaseModal(true); }} className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200" title="Nouvel Achat (Réapprovisionner)"><ArrowDown size={14} className="inline mr-1"/>Acheter</button>
                     <button onClick={() => { setFormData(item); setShowForm(true); }} className="text-blue-500 hover:text-blue-700"><Edit size={16}/></button>
                     <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
@@ -2110,7 +2380,7 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
             })}
             {filteredSuppliers.length === 0 && (
               <tr>
-                <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
+                <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
                   <div className="flex flex-col items-center justify-center">
                     <Truck size={48} className="text-gray-300 mb-4" />
                     <p className="text-lg font-medium text-gray-900">Aucun fournisseur trouvé</p>
