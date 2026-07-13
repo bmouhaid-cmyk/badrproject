@@ -987,8 +987,8 @@ function App() {
   const operatingExpenses = transactions
     .reduce((acc, curr) => {
       if (curr.type === 'expense') {
-        // Only include expense if completed and NOT a Supplier Payment (to avoid double-counting with totalPurchases)
-        if (curr.status === 'completed' && curr.category !== 'Supplier Payment') {
+        // Include all completed expenses in Total Expenses
+        if (curr.status === 'completed') {
           return acc + Math.abs(parseFloat(curr.amount || 0));
         }
       } else if (curr.type === 'sale') {
