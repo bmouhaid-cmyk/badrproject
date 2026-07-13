@@ -1294,13 +1294,7 @@ function App() {
               t={t}
             />
           )}
-          {view === 'archives' && (
-            <ProductArchiveManager
-              archive={archive}
-              setArchive={setArchive}
-              t={t}
-            />
-          )}
+
           {view === 'history' && (
             <HistoryView
               transactions={transactions}
