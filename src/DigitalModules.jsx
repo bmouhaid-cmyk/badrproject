@@ -32,7 +32,7 @@ export const DigitalDashboard = ({ subscriptions = [], digitalTransactions = [],
       return acc + (parseFloat(curr.amount_paid || 0) / months);
     }, 0);
 
-  const stockValue = digitalInventory.reduce((acc, item) => acc + (parseInt(item.quantity || 0) * parseFloat(item.buy_price || 0)), 0);
+  const stockValue = digitalInventory.reduce((acc, item) => acc + (parseFloat(item.quantity || 0) * parseFloat(item.buy_price || 0)), 0);
 
   // Bénéfice Net (Profit per credit)
   let totalNetProfit = 0;
@@ -581,7 +581,7 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
     const prod = digitalInventory?.find(p => p.id === pid);
     const up = prod ? prod.buy_price || 0 : 0;
     const q = formData.quantity || 1;
-    const tp = (parseFloat(up) * parseInt(q)).toFixed(2);
+    const tp = (parseFloat(up) * parseFloat(q)).toFixed(2);
     setFormData({ ...formData, product_id: pid, unit_price: up, total_price: tp, amount_paid: tp });
   };
 
@@ -591,12 +591,12 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
       const product = digitalInventory.find(p => p.id === formData.product_id);
       if (!product) return alert('Produit invalide');
       
-      const newQuantity = (product.quantity || 0) + parseInt(formData.quantity);
+      const newQuantity = (product.quantity || 0) + parseFloat(formData.quantity);
       
       const { error: invErr } = await supabase.from('digital_inventory').update({ quantity: newQuantity }).eq('id', formData.product_id);
       if (invErr) throw invErr;
       
-      const totalAmount = formData.total_price !== undefined ? parseFloat(formData.total_price) : (parseFloat(formData.unit_price) * parseInt(formData.quantity));
+      const totalAmount = formData.total_price !== undefined ? parseFloat(formData.total_price) : (parseFloat(formData.unit_price) * parseFloat(formData.quantity));
       
       const transactions = [];
       const tx = {
@@ -662,10 +662,10 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Quantité</label>
-            <input required type="number" min="1" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>{
+            <input required type="number" step="any" min="0" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>{
               const q = e.target.value;
               const up = formData.unit_price || 0;
-              const tp = q ? (parseFloat(up) * parseInt(q)).toFixed(2) : formData.total_price;
+              const tp = q ? (parseFloat(up) * parseFloat(q)).toFixed(2) : formData.total_price;
               setFormData({...formData, quantity: q, total_price: tp, amount_paid: tp});
             }} />
           </div>
@@ -675,15 +675,15 @@ const PurchaseStockModal = ({ isOpen, onClose, digitalInventory, digitalSupplier
               <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.unit_price} onChange={e=>{
                 const up = e.target.value;
                 const q = formData.quantity || 1;
-                setFormData({...formData, unit_price: up, total_price: up ? (parseFloat(up) * parseInt(q)).toFixed(2) : ''});
+                setFormData({...formData, unit_price: up, total_price: up ? (parseFloat(up) * parseFloat(q)).toFixed(2) : ''});
               }} />
             </div>
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">Prix Général (Total MAD)</label>
-              <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.total_price !== undefined ? formData.total_price : (parseFloat(formData.unit_price || 0) * parseInt(formData.quantity || 0))} onChange={e=>{
+              <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.total_price !== undefined ? formData.total_price : (parseFloat(formData.unit_price || 0) * parseFloat(formData.quantity || 0))} onChange={e=>{
                 const tp = e.target.value;
                 const q = formData.quantity || 1;
-                setFormData({...formData, total_price: tp, unit_price: tp ? (parseFloat(tp) / parseInt(q)).toFixed(2) : ''});
+                setFormData({...formData, total_price: tp, unit_price: tp ? (parseFloat(tp) / parseFloat(q)).toFixed(2) : ''});
               }} />
             </div>
           </div>
@@ -874,7 +874,7 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
   });
 
   const totalProducts = digitalInventory.length;
-  const stockValue = digitalInventory.reduce((acc, item) => acc + (parseInt(item.quantity || 0) * parseFloat(item.buy_price || 0)), 0);
+  const stockValue = digitalInventory.reduce((acc, item) => acc + (parseFloat(item.quantity || 0) * parseFloat(item.buy_price || 0)), 0);
   const uniqueCategories = [...new Set(digitalInventory.map(i => i.category).filter(Boolean))].length;
 
   return (
@@ -974,10 +974,10 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
               </div>
               <div className="lg:col-span-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Stock Actuel (Manuel)</label>
-                <input type="number" className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" value={formData.quantity} onChange={e=>{
+                <input type="number" step="any" min="0" className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" value={formData.quantity} onChange={e=>{
                   const q = e.target.value;
                   const up = formData.buy_price || 0;
-                  setFormData({...formData, quantity: q, total_buy_price: q ? (parseFloat(up) * parseInt(q)).toFixed(2) : formData.total_buy_price});
+                  setFormData({...formData, quantity: q, total_buy_price: q ? (parseFloat(up) * parseFloat(q)).toFixed(2) : formData.total_buy_price});
                 }} />
                 <p className="text-xs text-gray-500 mt-1">Utilisez "Réapprovisionner" pour ajouter du stock de manière tracée. Cette case sert aux corrections d'inventaire.</p>
               </div>
@@ -986,15 +986,15 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
                 <input type="number" step="0.01" className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" value={formData.buy_price} onChange={e=>{
                   const up = e.target.value;
                   const q = formData.quantity || 0;
-                  setFormData({...formData, buy_price: up, total_buy_price: up ? (parseFloat(up) * parseInt(q)).toFixed(2) : ''});
+                  setFormData({...formData, buy_price: up, total_buy_price: up ? (parseFloat(up) * parseFloat(q)).toFixed(2) : ''});
                 }} />
               </div>
               <div className="lg:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Coût d'achat général (Total MAD)</label>
-                <input type="number" step="0.01" className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" value={formData.total_buy_price !== undefined ? formData.total_buy_price : (parseFloat(formData.buy_price || 0) * parseInt(formData.quantity || 0) || '')} onChange={e=>{
+                <input type="number" step="0.01" className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" value={formData.total_buy_price !== undefined ? formData.total_buy_price : (parseFloat(formData.buy_price || 0) * parseFloat(formData.quantity || 0) || '')} onChange={e=>{
                   const tp = e.target.value;
                   const q = formData.quantity || 0;
-                  setFormData({...formData, total_buy_price: tp, buy_price: tp && q > 0 ? (parseFloat(tp) / parseInt(q)).toFixed(2) : ''});
+                  setFormData({...formData, total_buy_price: tp, buy_price: tp && q > 0 ? (parseFloat(tp) / parseFloat(q)).toFixed(2) : ''});
                 }} />
               </div>
             </div>
@@ -1526,7 +1526,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
         const product = digitalInventory.find(p => p.id === finalProductId);
         if (!product) return alert('Produit invalide');
         
-        const totalAmount = formData.total_price !== undefined ? parseFloat(formData.total_price) : (parseFloat(formData.unit_price) * parseInt(formData.quantity));
+        const totalAmount = formData.total_price !== undefined ? parseFloat(formData.total_price) : (parseFloat(formData.unit_price) * parseFloat(formData.quantity));
         const transactions = [];
         const tx = {
           date: formData.date,
@@ -1559,7 +1559,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
         const { error: txErr } = await supabase.from('digital_transactions').insert(transactions);
         if (txErr) throw txErr;
 
-        const newQuantity = (product.quantity || 0) + parseInt(formData.quantity);
+        const newQuantity = (product.quantity || 0) + parseFloat(formData.quantity);
         const { error: invErr } = await supabase.from('digital_inventory').update({ quantity: newQuantity }).eq('id', finalProductId);
         if (invErr) throw invErr;
 
@@ -1659,7 +1659,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
              netProfitCredits += (parseFloat(t.amount || 0) - cost);
          } else {
              const prod = digitalInventory?.find(p => p.id === t.digital_product_id);
-             const cost = (parseFloat(prod?.buy_price || 0)) * (parseInt(t.quantity || 1));
+             const cost = (parseFloat(prod?.buy_price || 0)) * (parseFloat(t.quantity || 1));
              netProfitCredits += (parseFloat(t.amount || 0) - cost);
          }
      } else if (t.type === 'expense' || t.type === 'purchase') {
@@ -1871,7 +1871,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                       const prod = digitalInventory?.find(p => p.id === pid);
                       const up = prod ? prod.buy_price || 0 : 0;
                       const q = formData.quantity || 1;
-                      const tp = (parseFloat(up) * parseInt(q)).toFixed(2);
+                      const tp = (parseFloat(up) * parseFloat(q)).toFixed(2);
                       setFormData({ ...formData, product_id: pid, unit_price: up, total_price: tp, amount_paid: tp });
                     }}>
                       <option value="">Sélectionner un produit</option>
@@ -1904,10 +1904,10 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                   )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Quantité à ajouter</label>
-                    <input required type="number" min="1" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>{
+                    <input required type="number" step="any" min="0" className="w-full border p-2 rounded-lg" value={formData.quantity} onChange={e=>{
                       const q = e.target.value;
                       const up = formData.unit_price || 0;
-                      const tp = q ? (parseFloat(up) * parseInt(q)).toFixed(2) : formData.total_price;
+                      const tp = q ? (parseFloat(up) * parseFloat(q)).toFixed(2) : formData.total_price;
                       setFormData({...formData, quantity: q, total_price: tp, amount_paid: tp});
                     }} />
                   </div>
@@ -1917,16 +1917,16 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                       <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.unit_price} onChange={e=>{
                         const up = e.target.value;
                         const q = formData.quantity || 1;
-                        const tp = up ? (parseFloat(up) * parseInt(q)).toFixed(2) : '';
+                        const tp = up ? (parseFloat(up) * parseFloat(q)).toFixed(2) : '';
                         setFormData({...formData, unit_price: up, total_price: tp, amount_paid: tp});
                       }} />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Prix Général (Total MAD)</label>
-                      <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.total_price !== undefined ? formData.total_price : (parseFloat(formData.unit_price || 0) * parseInt(formData.quantity || 0))} onChange={e=>{
+                      <input required type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.total_price !== undefined ? formData.total_price : (parseFloat(formData.unit_price || 0) * parseFloat(formData.quantity || 0))} onChange={e=>{
                         const tp = e.target.value;
                         const q = formData.quantity || 1;
-                        setFormData({...formData, total_price: tp, unit_price: tp ? (parseFloat(tp) / parseInt(q)).toFixed(2) : '', amount_paid: tp});
+                        setFormData({...formData, total_price: tp, unit_price: tp ? (parseFloat(tp) / parseFloat(q)).toFixed(2) : '', amount_paid: tp});
                       }} />
                     </div>
                   </div>
@@ -2064,7 +2064,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                               const prod = digitalInventory?.find(p => p.id === t.digital_product_id);
                               if (prod) {
                                   isProductSale = true;
-                                  creditsUsed = parseInt(t.quantity || 1);
+                                  creditsUsed = parseFloat(t.quantity || 1);
                                   buyPricePerCredit = parseFloat(prod?.buy_price || 0);
                                   sellPricePerCredit = parseFloat(t.amount || 0) / creditsUsed;
                               }
@@ -2112,7 +2112,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                               rowProfit = (parseFloat(t.amount || 0) - cost);
                           } else {
                               const prod = digitalInventory?.find(p => p.id === t.digital_product_id);
-                              const cost = (parseFloat(prod?.buy_price || 0)) * (parseInt(t.quantity || 1));
+                              const cost = (parseFloat(prod?.buy_price || 0)) * (parseFloat(t.quantity || 1));
                               rowProfit = (parseFloat(t.amount || 0) - cost);
                           }
                       } else if (t.type === 'expense' || t.type === 'purchase') {

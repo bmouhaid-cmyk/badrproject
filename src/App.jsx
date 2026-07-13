@@ -1046,6 +1046,23 @@ function App() {
     return sum + (parseFloat(item.buy_price || 0) * parseInt(item.quantity || 0));
   }, 0);
 
+  // Calculate global supplier debts for dashboard
+  const totalSupplierDebts = suppliers.reduce((total, supplier) => {
+    const histPurchases = parseFloat(supplier.historical_purchases || 0);
+    const histPaid = parseFloat(supplier.historical_paid || 0);
+
+    const supplierPurchases = transactions.filter(t => t.type === 'purchase' && t.party === supplier.name && (t.status === 'completed' || t.status === 'pending'));
+    const supplierPayments = transactions.filter(t => t.type === 'expense' && t.category === 'Supplier Payment' && t.party === supplier.name && t.status === 'completed');
+    
+    const totalPurchases = histPurchases + supplierPurchases.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    const paidViaCompletedPurchases = supplierPurchases.filter(t => t.status === 'completed').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    const paidViaPartialPayments = supplierPayments.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    
+    const paid = histPaid + paidViaCompletedPurchases + paidViaPartialPayments;
+    const balance = totalPurchases - paid;
+    return total + (balance > 0 ? balance : 0);
+  }, 0);
+
   // --- Helper Functions ---
   const t = (key) => translations[language][key] || key;
   const isRTL = language === 'ar';
@@ -1228,6 +1245,7 @@ function App() {
               inventoryValue={inventoryValue}
               transactions={transactions}
               inventory={inventory}
+              totalSupplierDebts={totalSupplierDebts}
               t={t}
             />
           )}
@@ -1409,16 +1427,17 @@ function App() {
 
 // --- Placeholder Sub-Components ---
 
-const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, transactions, inventory, t }) => {
+const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, transactions, inventory, totalSupplierDebts, t }) => {
   const recentTransactions = transactions.slice(0, 5);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <MetricCard title={t('totalIncome')} value={totalIncome} icon={TrendingUp} color="green" />
         <MetricCard title={t('totalExpenses')} value={totalExpenses} icon={TrendingDown} color="red" />
         <MetricCard title={t('netProfit')} value={netProfit} icon={ArrowRightLeft} color={netProfit >= 0 ? 'blue' : 'red'} />
         <MetricCard title={t('inventoryValue')} value={inventoryValue} icon={Package} color="purple" />
+        <MetricCard title="Total Dettes Fournisseurs" value={totalSupplierDebts} icon={TrendingDown} color="orange" />
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -3703,16 +3722,20 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   });
   // Payment form state
   const [paymentForm, setPaymentForm] = useState({ date: new Date().toISOString().split('T')[0], amount: '', bankAccountId: '', fees: '' });
-
+  // Fetch stats for a specific supplier (trigger HMR)
   const getSupplierStats = (supplierName) => {
+    const supplier = suppliers.find(s => s.name === supplierName) || {};
+    const histPurchases = parseFloat(supplier.historical_purchases || 0);
+    const histPaid = parseFloat(supplier.historical_paid || 0);
+
     const supplierPurchases = transactions.filter(t => t.type === 'purchase' && t.party === supplierName && (t.status === 'completed' || t.status === 'pending'));
     const supplierPayments = transactions.filter(t => t.type === 'expense' && t.category === 'Supplier Payment' && t.party === supplierName && t.status === 'completed');
     
-    const totalPurchases = supplierPurchases.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    const totalPurchases = histPurchases + supplierPurchases.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     const paidViaCompletedPurchases = supplierPurchases.filter(t => t.status === 'completed').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     const paidViaPartialPayments = supplierPayments.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     
-    const paid = paidViaCompletedPurchases + paidViaPartialPayments;
+    const paid = histPaid + paidViaCompletedPurchases + paidViaPartialPayments;
     const balance = totalPurchases - paid;
     const products = [...new Set(supplierPurchases.map(t => {
        if (t.item_id) {
@@ -3806,11 +3829,20 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
 
   const handleAddSupplier = async () => {
     if (newSupplier.name) {
+      const histPurchases = parseFloat(newSupplier.totalPurchases || 0);
+      const histPaid = newSupplier.totalPaid === '' ? histPurchases : parseFloat(newSupplier.totalPaid || 0);
+
+      const supplierData = { 
+        name: newSupplier.name, 
+        contact: newSupplier.contact,
+        historical_purchases: histPurchases,
+        historical_paid: histPaid
+      };
+
       if (editingId) {
         const originalSupplier = suppliers.find(s => s.id === editingId);
-        const originalStats = getSupplierStats(originalSupplier.name);
         
-        const { data, error } = await supabase.from('suppliers').update({ name: newSupplier.name, contact: newSupplier.contact }).eq('id', editingId).select();
+        const { data, error } = await supabase.from('suppliers').update(supplierData).eq('id', editingId).select();
         if (data) {
           setSuppliers(suppliers.map(s => s.id === editingId ? data[0] : s));
           
@@ -3838,49 +3870,15 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                   }
                   return modified;
               });
-          }
-
-          const diffPurchases = parseFloat(newSupplier.totalPurchases || 0) - originalStats.totalPurchases;
-          const diffPaid = parseFloat(newSupplier.totalPaid || 0) - originalStats.paid;
-          
-          let newTransactions = [];
-          if (diffPurchases !== 0) {
-              newTransactions.push({
-                  date: new Date().toISOString().split('T')[0],
-                  type: 'purchase',
-                  party: newSupplier.name,
-                  amount: diffPurchases,
-                  status: 'completed',
-                  category: 'Ajustement',
-                  notes: 'Ajustement manuel du total achats'
-              });
-          }
-          if (diffPaid !== 0) {
-              newTransactions.push({
-                  date: new Date().toISOString().split('T')[0],
-                  type: 'expense',
-                  category: 'Supplier Payment',
-                  party: newSupplier.name,
-                  amount: diffPaid,
-                  status: 'completed',
-                  notes: 'Ajustement manuel du total payé'
-              });
+              setTransactions(updatedTx);
           }
           
-          if (newTransactions.length > 0) {
-              const { data: txData } = await supabase.from('transactions').insert(newTransactions).select();
-              if (txData) {
-                  updatedTx = [...txData, ...updatedTx];
-              }
-          }
-          
-          setTransactions(updatedTx);
-          setNewSupplier({ name: '', contact: '' });
+          setNewSupplier({ name: '', contact: '', totalPurchases: '', totalPaid: '' });
           setEditingId(null);
           setShowAddForm(false);
         }
       } else {
-        const { data, error } = await supabase.from('suppliers').insert([{ name: newSupplier.name, contact: newSupplier.contact }]).select();
+        const { data, error } = await supabase.from('suppliers').insert([supplierData]).select();
         if (data) {
           setSuppliers([...suppliers, data[0]]);
           setNewSupplier({ name: '', contact: '' });
@@ -4320,7 +4318,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                         <button onClick={() => { setSelectedSupplier(supplier.name); setShowPurchaseModal(true); }} className="text-gray-400 hover:text-orange-600 transition-colors" title="Nouvel Achat"><ShoppingCart size={18} /></button>
                         <button onClick={() => { setSelectedSupplier(supplier.name); setShowPaymentModal(true); }} className="text-gray-400 hover:text-purple-600 transition-colors" title="Paiement"><CreditCard size={18} /></button>
                         <button onClick={() => { setSelectedSupplier(supplier.name); setShowHistoryModal(true); }} className="text-gray-400 hover:text-indigo-600 transition-colors" title="Historique"><History size={18} /></button>
-                        <button onClick={() => { setEditingId(supplier.id); setNewSupplier({ name: supplier.name, contact: supplier.contact || '', totalPurchases: stats.totalPurchases, totalPaid: stats.paid }); setShowAddForm(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-gray-400 hover:text-blue-600 transition-colors" title="Modifier"><Edit size={18} /></button>
+                        <button onClick={() => { setEditingId(supplier.id); setNewSupplier({ name: supplier.name, contact: supplier.contact || '', totalPurchases: supplier.historical_purchases || '', totalPaid: supplier.historical_paid || '' }); setShowAddForm(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-gray-400 hover:text-blue-600 transition-colors" title="Modifier"><Edit size={18} /></button>
                         <button onClick={() => handleDeleteSupplier(supplier.id)} className="text-gray-400 hover:text-red-600 transition-colors" title="Supprimer"><Trash2 size={18} /></button>
                       </div>
                     </td>
