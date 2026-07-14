@@ -1651,9 +1651,9 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
     
     if (!matchesSearch || !matchesItem) return false;
       if (typeFilter !== 'allTypes') {
-        if (typeFilter === 'expense' && !['expense', 'supplier_payment', 'purchase'].includes(t.type)) return false;
+        if (typeFilter === 'outflow' && !['expense', 'supplier_payment', 'purchase'].includes(t.type)) return false;
         if (typeFilter === 'sale' && !['sale', 'other_revenue'].includes(t.type)) return false;
-        if (typeFilter !== 'expense' && typeFilter !== 'sale' && t.type !== typeFilter) return false;
+        if (typeFilter !== 'outflow' && typeFilter !== 'sale' && t.type !== typeFilter) return false;
       }
     if (statusFilter !== 'allStatuses' && t.status !== statusFilter) return false;
     
@@ -1662,10 +1662,38 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
     
     return true;
   }).sort((a, b) => {
-    if (sortOrder === 'Date (newest)') return new Date(b.date) - new Date(a.date);
-    if (sortOrder === 'Date (oldest)') return new Date(a.date) - new Date(b.date);
-    if (sortOrder === 'Amount (highest)') return parseFloat(b.amount) - parseFloat(a.amount);
-    if (sortOrder === 'Amount (lowest)') return parseFloat(a.amount) - parseFloat(b.amount);
+    const getSignedAmount = (t) => {
+        let amt = parseFloat(t.amount || 0);
+        return (t.type === 'expense' || t.type === 'purchase' || t.type === 'supplier_payment') ? -amt : amt;
+    };
+    const getNetProfit = (t) => {
+        let rowProfit = 0;
+        if (t.type === 'sale' || t.type === 'other_revenue') {
+            if (t.subscription_id) {
+                const sub = subscriptions?.find(s => s.id === t.subscription_id);
+                const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
+                const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
+                    ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                    : parseFloat(sub?.duration_months || 0);
+                const cost = (parseFloat(prod?.buy_price || 0)) * creditsUsed;
+                rowProfit = (parseFloat(t.amount || 0) - cost);
+            } else {
+                const prod = digitalInventory?.find(p => p.id === t.digital_product_id);
+                const cost = (parseFloat(prod?.buy_price || 0)) * (parseFloat(t.quantity || 1));
+                rowProfit = (parseFloat(t.amount || 0) - cost);
+            }
+        } else if (t.type === 'expense' || t.type === 'purchase' || t.type === 'supplier_payment') {
+            rowProfit = -parseFloat(t.amount || 0);
+        }
+        return rowProfit;
+    };
+
+    if (sortOrder === 'Date (newest)') return new Date(b.date || 0) - new Date(a.date || 0);
+    if (sortOrder === 'Date (oldest)') return new Date(a.date || 0) - new Date(b.date || 0);
+    if (sortOrder === 'Amount (highest)') return getSignedAmount(b) - getSignedAmount(a);
+    if (sortOrder === 'Amount (lowest)') return getSignedAmount(a) - getSignedAmount(b);
+    if (sortOrder === 'Profit (highest)') return getNetProfit(b) - getNetProfit(a);
+    if (sortOrder === 'Profit (lowest)') return getNetProfit(a) - getNetProfit(b);
     return 0;
   });
 
@@ -1673,6 +1701,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
 
   const totalIncome = targetTransactions.filter(t => t.type === 'sale' || t.type === 'other_revenue').reduce((acc, t) => acc + parseFloat(t.amount || 0), 0);
   const totalExpenses = targetTransactions.filter(t => t.type === 'purchase' || t.type === 'expense').reduce((acc, t) => acc + parseFloat(t.amount || 0), 0);
+  const totalSupplierPayments = targetTransactions.filter(t => t.type === 'supplier_payment').reduce((acc, t) => acc + parseFloat(t.amount || 0), 0);
   const netProfit = totalIncome - totalExpenses;
 
   let netProfitCredits = 0;
@@ -1724,10 +1753,12 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
               <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none" />
               
               <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="border rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none ml-2">
-                <option value="allTypes">allTypes</option>
-                <option value="sale">Ventes (Entrées)</option>
-                <option value="expense">Dépenses (Sorties)</option>
-                <option value="purchase">Achats</option>
+                <option value="allTypes">Tous les types</option>
+                <option value="sale">Ventes / Entrées</option>
+                <option value="outflow">Toutes les sorties</option>
+                <option value="purchase">Achats de stock</option>
+                <option value="supplier_payment">Paiements Fournisseur</option>
+                <option value="expense">Autres Dépenses</option>
               </select>
               
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
@@ -1737,10 +1768,12 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
               </select>
               
               <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className="border rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                <option value="Date (newest)">Date (newest)</option>
-                <option value="Date (oldest)">Date (oldest)</option>
-                <option value="Amount (highest)">Amount (highest)</option>
-                <option value="Amount (lowest)">Amount (lowest)</option>
+                <option value="Date (newest)">Date (Plus récent)</option>
+                <option value="Date (oldest)">Date (Plus ancien)</option>
+                <option value="Amount (highest)">Montant (Le plus élevé)</option>
+                <option value="Amount (lowest)">Montant (Le plus bas)</option>
+                <option value="Profit (highest)">Bénéfice (Le plus élevé)</option>
+                <option value="Profit (lowest)">Bénéfice (Le plus bas)</option>
               </select>
             </div>
             
@@ -1766,24 +1799,28 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
 
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 shadow-sm">
         <h3 className="text-blue-800 font-medium mb-3">Selected Summary ({targetTransactions.length} items)</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">TOTAL INCOME</p>
-            <p className="text-xl font-bold text-green-600">MAD {totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+            <p className="text-lg font-bold text-green-600">MAD {totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">TOTAL EXPENSES</p>
-            <p className="text-xl font-bold text-red-600">MAD {totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+            <p className="text-lg font-bold text-red-600">MAD {totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1" title="Paiements effectués aux fournisseurs">TOTAL PAYÉ (Fourn.)</p>
+            <p className="text-lg font-bold text-purple-600">MAD {totalSupplierPayments.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">NET PROFIT</p>
-            <p className={`text-xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>MAD {netProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-            <p className="text-[10px] text-gray-400 mt-1">(Income - COGS - OpEx)</p>
+            <p className={`text-lg font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>MAD {netProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+            <p className="text-[9px] text-gray-400 mt-1 truncate">(Income - COGS - OpEx)</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Bénéfice Net (Crédits)</p>
-            <p className={`text-xl font-bold ${netProfitCredits >= 0 ? 'text-green-600' : 'text-red-600'}`}>MAD {netProfitCredits.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-            <p className="text-[10px] text-gray-400 mt-1">(Income - Credit Cost)</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1 truncate" title="Bénéfice Net basé sur le coût des crédits">BÉNÉFICE (Crédits)</p>
+            <p className={`text-lg font-bold ${netProfitCredits >= 0 ? 'text-green-600' : 'text-red-600'}`}>MAD {netProfitCredits.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+            <p className="text-[9px] text-gray-400 mt-1 truncate">(Income - Credit Cost)</p>
           </div>
         </div>
       </div>
@@ -2285,6 +2322,24 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
            (item.contact && item.contact.toLowerCase().includes(searchTerm.toLowerCase()));
   }) || [];
 
+  const globalPurchases = filteredSuppliers.reduce((acc, item) => {
+    return acc + (digitalTransactions
+      ? digitalTransactions
+          .filter(t => t.type === 'purchase' && t.digital_supplier_id === item.id)
+          .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
+      : 0);
+  }, 0);
+
+  const globalPaid = filteredSuppliers.reduce((acc, item) => {
+    return acc + (digitalTransactions
+      ? digitalTransactions
+          .filter(t => t.type === 'supplier_payment' && t.digital_supplier_id === item.id)
+          .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
+      : 0);
+  }, 0);
+
+  const globalBalance = globalPurchases - globalPaid;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -2304,6 +2359,24 @@ export const DigitalSuppliersManager = ({ digitalSuppliers, digitalTransactions,
           <button onClick={() => { setFormData({ id: null, name: '', contact: '', email: '', phone: '', notes: '' }); setShowForm(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
             <Plus size={18} className="mr-2"/> Nouveau Fournisseur
           </button>
+        </div>
+      </div>
+
+      <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 shadow-sm">
+        <h3 className="text-purple-800 font-medium mb-3">Résumé ({filteredSuppliers.length} fournisseurs)</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Achats Totaux</p>
+            <p className="text-xl font-bold text-purple-600">MAD {globalPurchases.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Payé</p>
+            <p className="text-xl font-bold text-green-600">MAD {globalPaid.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Reste à payer (Dettes)</p>
+            <p className={`text-xl font-bold ${globalBalance > 0 ? 'text-red-600' : 'text-gray-600'}`}>MAD {globalBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          </div>
         </div>
       </div>
 
