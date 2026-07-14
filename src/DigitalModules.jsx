@@ -28,7 +28,7 @@ export const DigitalDashboard = ({ subscriptions = [], digitalTransactions = [],
   const mrr = subscriptions
     .filter(isActive)
     .reduce((acc, curr) => {
-      const months = parseInt(curr.duration_months) || 1;
+      const months = parseFloat(curr.duration_months) || 1;
       return acc + (parseFloat(curr.amount_paid || 0) / months);
     }, 0);
 
@@ -51,7 +51,7 @@ export const DigitalDashboard = ({ subscriptions = [], digitalTransactions = [],
         const costFor1Credit = parseFloat(prod.buy_price || 0);
         const numberOfCredits = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
             ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
-            : parseInt(sub.duration_months) || 1;
+            : parseFloat(sub.duration_months) || 1;
         const totalCost = costFor1Credit * numberOfCredits;
         totalNetProfit += (rev - totalCost);
       } else {
@@ -250,15 +250,15 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       const end_date = calculateEndDate(formData.start_date, formData.duration_months);
       const product = digitalInventory.find(i => i.id === formData.product_id);
       
-      const creditsToDeduct = parseInt(formData.credits_to_deduct) || parseInt(formData.duration_months);
-      const notesSuffix = creditsToDeduct !== parseInt(formData.duration_months) ? ` [CRD:${creditsToDeduct}]` : '';
+      const creditsToDeduct = parseFloat(formData.credits_to_deduct) || parseFloat(formData.duration_months);
+      const notesSuffix = creditsToDeduct !== parseFloat(formData.duration_months) ? ` [CRD:${creditsToDeduct}]` : '';
 
       const dbSub = {
         customer_name: formData.customer_name,
         customer_phone: formData.customer_phone,
         product_id: formData.product_id,
         product_name: product ? product.name : 'Unknown',
-        duration_months: parseInt(formData.duration_months),
+        duration_months: parseFloat(formData.duration_months),
         start_date: formData.start_date,
         end_date: end_date,
         amount_paid: parseFloat(formData.amount_paid),
@@ -290,7 +290,7 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
           
           // Deduct stock (Credits)
           if (formData.product_id && product) {
-            const creditsToDeduct = parseInt(formData.credits_to_deduct) || parseInt(formData.duration_months) || 1;
+            const creditsToDeduct = parseFloat(formData.credits_to_deduct) || parseFloat(formData.duration_months) || 1;
             const newQty = (product.quantity || 0) - creditsToDeduct;
             await supabase.from('digital_inventory').update({ quantity: newQty }).eq('id', product.id);
           }
@@ -330,12 +330,12 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       
       const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
           ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
-          : parseInt(sub.duration_months);
+          : parseFloat(sub.duration_months);
       const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock ? (Abonnement de ${sub.duration_months} mois, ${creditsUsed} crédits déduits)`, creditsUsed);
-      if (restockAmount !== null && !isNaN(restockAmount) && parseInt(restockAmount) > 0 && sub.product_id) {
+      if (restockAmount !== null && !isNaN(restockAmount) && parseFloat(restockAmount) > 0 && sub.product_id) {
         const prod = digitalInventory?.find(p => p.id === sub.product_id);
         if (prod) {
-          await supabase.from('digital_inventory').update({ quantity: (prod.quantity || 0) + parseInt(restockAmount) }).eq('id', sub.product_id);
+          await supabase.from('digital_inventory').update({ quantity: (prod.quantity || 0) + parseFloat(restockAmount) }).eq('id', sub.product_id);
         }
       }
       
@@ -345,12 +345,12 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       if (window.confirm("Êtes-vous sûr de vouloir supprimer définitivement cet abonnement ?")) {
         const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
             ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
-            : parseInt(sub.duration_months);
+            : parseFloat(sub.duration_months);
         const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock avant suppression ? (Abonnement de ${sub.duration_months} mois, ${creditsUsed} crédits déduits)`, creditsUsed);
-        if (restockAmount !== null && !isNaN(restockAmount) && parseInt(restockAmount) > 0 && sub.product_id) {
+        if (restockAmount !== null && !isNaN(restockAmount) && parseFloat(restockAmount) > 0 && sub.product_id) {
           const prod = digitalInventory?.find(p => p.id === sub.product_id);
           if (prod) {
-            await supabase.from('digital_inventory').update({ quantity: (prod.quantity || 0) + parseInt(restockAmount) }).eq('id', sub.product_id);
+            await supabase.from('digital_inventory').update({ quantity: (prod.quantity || 0) + parseFloat(restockAmount) }).eq('id', sub.product_id);
           }
         }
         await supabase.from('subscriptions').delete().eq('id', id);
@@ -446,20 +446,15 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Durée (Mois)</label>
-                <select className="w-full border-gray-300 rounded-lg p-2 border" value={formData.duration_months} onChange={e => {
-                  const val = parseInt(e.target.value);
-                  setFormData({...formData, duration_months: val, credits_to_deduct: val});
-                }}>
-                  <option value={1}>1 Mois</option>
-                  <option value={3}>3 Mois</option>
-                  <option value={6}>6 Mois</option>
-                  <option value={12}>12 Mois (1 An)</option>
-                </select>
+                <input type="number" step="any" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.duration_months} onChange={e => {
+                      const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                      setFormData({...formData, duration_months: val, credits_to_deduct: val});
+                    }} />
               </div>
               {!formData.id && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Crédits à déduire du stock</label>
-                  <input required type="number" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.credits_to_deduct} onChange={e => setFormData({...formData, credits_to_deduct: e.target.value})} />
+                  <input required type="number" step="any" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.credits_to_deduct} onChange={e => setFormData({...formData, credits_to_deduct: e.target.value})} />
                 </div>
               )}
               <div>
@@ -1122,6 +1117,8 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
 export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supabase }) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', type: 'bank', initialBalance: 0 });
+  const [sortOption, setSortOption] = useState('date_desc');
+  const [typeFilter, setTypeFilter] = useState('all');
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'MAD' }).format(amount);
   };
@@ -1282,6 +1279,27 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
         <h4 className="font-bold text-gray-800 text-lg">Transactions Récentes</h4>
         <div className="flex items-center space-x-3 overflow-x-auto w-full md:w-auto">
+          <select 
+            className="border border-gray-300 rounded-lg p-2 text-sm text-gray-700 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            <option value="all">Tous les types</option>
+            <option value="sale">Ventes / Entrées</option>
+            <option value="purchase">Achats de stock</option>
+            <option value="supplier_payment">Paiements Fournisseur</option>
+            <option value="expense">Dépenses</option>
+          </select>
+          <select 
+            className="border border-gray-300 rounded-lg p-2 text-sm text-gray-700 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
+          >
+            <option value="date_desc">Date (Plus récent)</option>
+            <option value="date_asc">Date (Plus ancien)</option>
+            <option value="amount_desc">Montant (Plus élevé)</option>
+            <option value="amount_asc">Montant (Plus bas)</option>
+          </select>
           <button className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
             <ArrowRightLeft size={16} />
             <span>Internal Transfer</span>
@@ -1306,7 +1324,18 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="divide-y divide-gray-100">
-          {digitalTransactions.slice(0, 10).map(t => (
+          {[...digitalTransactions].filter(t => {
+            if (typeFilter === 'all') return true;
+            if (typeFilter === 'sale') return t.type === 'sale' || t.type === 'other_revenue';
+            return t.type === typeFilter;
+          }).sort((a, b) => {
+            switch (sortOption) {
+              case 'date_asc': return new Date(a.date) - new Date(b.date);
+              case 'amount_desc': return parseFloat(b.amount || 0) - parseFloat(a.amount || 0);
+              case 'amount_asc': return parseFloat(a.amount || 0) - parseFloat(b.amount || 0);
+              case 'date_desc': default: return new Date(b.date) - new Date(a.date);
+            }
+          }).slice(0, 10).map(t => (
             <div key={t.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
               <div className="flex items-center space-x-4">
                 <div className={`p-3 rounded-full ${t.type === 'sale' || t.type === 'other_revenue' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
@@ -1476,7 +1505,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
 
       if (formData.type === 'sale' && !formData.id) {
         const product = digitalInventory.find(i => i.id === finalProductId);
-        const creditsToDeduct = parseInt(formData.credits_to_deduct) || parseInt(formData.duration_months) || 1;
+        const creditsToDeduct = parseFloat(formData.credits_to_deduct) || parseFloat(formData.duration_months) || 1;
         
         if (product && (product.quantity || 0) < creditsToDeduct) {
           alert(`Stock insuffisant ! Le produit a ${product.quantity || 0} crédits, mais vous essayez d'en déduire ${creditsToDeduct}.`);
@@ -1484,14 +1513,14 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
         }
 
         const end_date = calculateEndDate(formData.date, formData.duration_months);
-        const notesSuffix = creditsToDeduct !== parseInt(formData.duration_months) ? ` [CRD:${creditsToDeduct}]` : '';
+        const notesSuffix = creditsToDeduct !== parseFloat(formData.duration_months) ? ` [CRD:${creditsToDeduct}]` : '';
 
         const dbSub = {
           customer_name: formData.customer_name,
           customer_phone: formData.customer_phone,
           product_id: finalProductId,
           product_name: product ? product.name : 'Unknown',
-          duration_months: parseInt(formData.duration_months),
+          duration_months: parseFloat(formData.duration_months),
           start_date: formData.date,
           end_date: end_date,
           amount_paid: parseFloat(formData.amount),
@@ -1654,7 +1683,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
              const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
                const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
                    ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
-                   : parseInt(sub?.duration_months || 1);
+                   : parseFloat(sub?.duration_months);
                const cost = (parseFloat(prod?.buy_price || 0)) * creditsUsed;
              netProfitCredits += (parseFloat(t.amount || 0) - cost);
          } else {
@@ -1814,19 +1843,14 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                   )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Durée (Mois)</label>
-                    <select className="w-full border-gray-300 rounded-lg p-2 border" value={formData.duration_months} onChange={e => {
-                      const val = parseInt(e.target.value);
+                    <input type="number" step="any" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.duration_months} onChange={e => {
+                      const val = e.target.value === '' ? '' : parseFloat(e.target.value);
                       setFormData({...formData, duration_months: val, credits_to_deduct: val});
-                    }}>
-                      <option value={1}>1 Mois</option>
-                      <option value={3}>3 Mois</option>
-                      <option value={6}>6 Mois</option>
-                      <option value={12}>12 Mois (1 An)</option>
-                    </select>
+                    }} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Crédits à déduire</label>
-                    <input required type="number" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.credits_to_deduct} onChange={e => setFormData({...formData, credits_to_deduct: e.target.value})} />
+                    <input required type="number" step="any" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.credits_to_deduct} onChange={e => setFormData({...formData, credits_to_deduct: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Montant Payé (MAD)</label>
@@ -2056,7 +2080,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                                   isProductSale = true;
                                   creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
                                       ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
-                                      : parseInt(sub?.duration_months || 1);
+                                      : parseFloat(sub?.duration_months);
                                   buyPricePerCredit = parseFloat(prod?.buy_price || 0);
                                   sellPricePerCredit = parseFloat(t.amount || 0) / creditsUsed;
                               }
@@ -2107,7 +2131,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                               const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
                               const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
                                   ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
-                                  : parseInt(sub?.duration_months || 1);
+                                  : parseFloat(sub?.duration_months);
                               const cost = (parseFloat(prod?.buy_price || 0)) * creditsUsed;
                               rowProfit = (parseFloat(t.amount || 0) - cost);
                           } else {
