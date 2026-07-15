@@ -2732,9 +2732,12 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
         quantity: parseInt(formData.quantity) || 0,
         buy_price: parseFloat(formData.buyPrice) || 0,
         sell_price: parseFloat(formData.sellPrice) || 0,
-        low_stock_threshold: parseInt(formData.lowStockThreshold) || 0,
-        initial_quantity: parseInt(formData.quantity) || 0
+        low_stock_threshold: parseInt(formData.lowStockThreshold) || 0
       };
+
+      if (!isEditing) {
+        dbItem.initial_quantity = parseInt(formData.quantity) || 0;
+      }
 
       let error = null;
       if (isEditing) {
@@ -3008,7 +3011,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{t('quantity')}</label>
-                  <input type="number" required className="mt-1 block w-full rounded-md border p-2" value={formData.quantity} onChange={e => setFormData({ ...formData, quantity: e.target.value })} disabled={isEditing} />
+                  <input type="number" required className="mt-1 block w-full rounded-md border p-2" value={formData.quantity} onChange={e => setFormData({ ...formData, quantity: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{t('lowStockAlert')}</label>
