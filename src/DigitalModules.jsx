@@ -49,8 +49,8 @@ export const DigitalDashboard = ({ subscriptions = [], digitalTransactions = [],
       const prod = digitalInventory.find(p => p.id === sub.product_id) || digitalInventory.find(p => p.name === sub.product_name);
       if (prod) {
         const costFor1Credit = parseFloat(prod.buy_price || 0);
-        const numberOfCredits = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
-            ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+        const numberOfCredits = sub?.notes && sub.notes.match(/\[CRD:([\d.]+)\]/) 
+            ? parseFloat(sub.notes.match(/\[CRD:([\d.]+)\]/)[1]) 
             : parseFloat(sub.duration_months) || 1;
         const totalCost = costFor1Credit * numberOfCredits;
         totalNetProfit += (rev - totalCost);
@@ -328,8 +328,8 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       };
       const { error: refundErr } = await supabase.from('digital_transactions').insert([refundTx]);
       
-      const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
-          ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+      const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:([\d.]+)\]/) 
+          ? parseFloat(sub.notes.match(/\[CRD:([\d.]+)\]/)[1]) 
           : parseFloat(sub.duration_months);
       const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock ? (Abonnement de ${sub.duration_months} mois, ${creditsUsed} crédits déduits)`, creditsUsed);
       if (restockAmount !== null && !isNaN(restockAmount) && parseFloat(restockAmount) > 0 && sub.product_id) {
@@ -343,8 +343,8 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
       else alert("Abonnement annulé, remboursement enregistré, et stock mis à jour si demandé.");
     } else if (action && action.toLowerCase() === 's') {
       if (window.confirm("Êtes-vous sûr de vouloir supprimer définitivement cet abonnement ?")) {
-        const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
-            ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+        const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:([\d.]+)\]/) 
+            ? parseFloat(sub.notes.match(/\[CRD:([\d.]+)\]/)[1]) 
             : parseFloat(sub.duration_months);
         const restockAmount = window.prompt(`Combien de crédits voulez-vous remettre en stock avant suppression ? (Abonnement de ${sub.duration_months} mois, ${creditsUsed} crédits déduits)`, creditsUsed);
         if (restockAmount !== null && !isNaN(restockAmount) && parseFloat(restockAmount) > 0 && sub.product_id) {
@@ -439,7 +439,22 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Produit Digital</label>
-                <select required className="w-full border-gray-300 rounded-lg p-2 border" value={formData.product_id} onChange={e => setFormData({...formData, product_id: e.target.value})}>
+                <select required className="w-full border-gray-300 rounded-lg p-2 border" value={formData.product_id} onChange={e => {
+                      const pid = e.target.value;
+                      let newCredits = formData.credits_to_deduct;
+                      const val = formData.duration_months;
+                      if (pid && pid !== 'NEW_PRODUCT') {
+                        const prod = digitalInventory?.find(p => p.id === pid);
+                        if (prod && prod.credit_rules && prod.credit_rules[val] !== undefined && prod.credit_rules[val] !== '') {
+                          newCredits = parseFloat(prod.credit_rules[val]);
+                        }
+                      } else if (pid === 'NEW_PRODUCT') {
+                        if (formData.new_product_credit_rules && formData.new_product_credit_rules[val] !== undefined && formData.new_product_credit_rules[val] !== '') {
+                          newCredits = parseFloat(formData.new_product_credit_rules[val]);
+                        }
+                      }
+                      setFormData({...formData, product_id: pid, credits_to_deduct: newCredits});
+                    }}>
                   <option value="">Sélectionner produit...</option>
                   {digitalInventory.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
@@ -448,7 +463,18 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
                 <label className="block text-sm font-medium text-gray-700 mb-1">Durée (Mois)</label>
                 <input type="number" step="any" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.duration_months} onChange={e => {
                       const val = e.target.value === '' ? '' : parseFloat(e.target.value);
-                      setFormData({...formData, duration_months: val, credits_to_deduct: val});
+                      let newCredits = val;
+                      if (formData.product_id && formData.product_id !== 'NEW_PRODUCT') {
+                        const prod = digitalInventory?.find(p => p.id === formData.product_id);
+                        if (prod && prod.credit_rules && prod.credit_rules[val] !== undefined && prod.credit_rules[val] !== '') {
+                          newCredits = parseFloat(prod.credit_rules[val]);
+                        }
+                      } else if (formData.product_id === 'NEW_PRODUCT') {
+                        if (formData.new_product_credit_rules && formData.new_product_credit_rules[val] !== undefined && formData.new_product_credit_rules[val] !== '') {
+                          newCredits = parseFloat(formData.new_product_credit_rules[val]);
+                        }
+                      }
+                      setFormData({...formData, duration_months: val, credits_to_deduct: newCredits});
                     }} />
               </div>
               {!formData.id && (
@@ -527,8 +553,8 @@ export const DigitalAbonnementsManager = ({ subscriptions, digitalInventory, sup
                     Du: {new Date(s.start_date).toLocaleDateString()} <span className="text-gray-400">à {new Date(s.start_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span><br/>
                     Au: <span className={diffDays <= 7 && isActive(s) ? 'text-red-500 font-bold' : ''}>{new Date(s.end_date).toLocaleDateString()}</span><br/>
                     <span className="text-purple-600 font-medium">({
-                        s.notes && s.notes.match(/\[CRD:(\d+)\]/) 
-                          ? parseInt(s.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                        s.notes && s.notes.match(/\[CRD:([\d.]+)\]/) 
+                          ? parseFloat(s.notes.match(/\[CRD:([\d.]+)\]/)[1]) 
                           : s.duration_months
                     } Crédits utilisés)</span>
                   </td>
@@ -819,7 +845,7 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
   const [showForm, setShowForm] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '', quantity: 0 });
+  const [formData, setFormData] = useState({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '', quantity: 0, credit_rules: { '12': '', '6': '', '3': '', '1': '', '0': '' } });
   const [selectedHistoryProduct, setSelectedHistoryProduct] = useState(null);
 
   const formatCurrency = (amount) => {
@@ -885,7 +911,7 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => { setFormData({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '' }); setShowForm(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
+          <button onClick={() => { setFormData({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '', quantity: 0, credit_rules: { '12': '', '6': '', '3': '', '1': '', '0': '' } }); setShowForm(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
             <Plus size={18} className="mr-2"/> Nouveau Produit
           </button>
         </div>
@@ -939,7 +965,7 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
           <button onClick={() => setShowPurchaseModal(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center shadow-sm">
             <ArrowDown size={18} className="mr-2"/> Réapprovisionner
           </button>
-          <button onClick={() => { setFormData({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '', quantity: 0 }); setShowForm(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
+          <button onClick={() => { setFormData({ id: null, name: '', buy_price: 0, sell_price: 0, category: '', notes: '', quantity: 0, credit_rules: { '12': '', '6': '', '3': '', '1': '', '0': '' } }); setShowForm(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center shadow-sm">
             <Plus size={18} className="mr-2"/> Nouveau Produit
           </button>
         </div>
@@ -991,6 +1017,24 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
                   const q = formData.quantity || 0;
                   setFormData({...formData, total_buy_price: tp, buy_price: tp && q > 0 ? (parseFloat(tp) / parseFloat(q)).toFixed(2) : ''});
                 }} />
+              </div>
+            </div>
+            <div className="mt-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <h4 className="font-semibold text-gray-800 mb-3">Règles de déduction de crédits (Optionnel)</h4>
+              <p className="text-sm text-gray-500 mb-4">Combien de crédits déduire automatiquement pour chaque durée d'abonnement ?</p>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                {[
+                  { key: '12', label: '1 An (12 mois)' },
+                  { key: '6', label: '6 Mois' },
+                  { key: '3', label: '3 Mois' },
+                  { key: '1', label: '1 Mois' },
+                  { key: '0', label: 'Test (0 mois)' }
+                ].map(d => (
+                  <div key={d.key}>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">{d.label}</label>
+                    <input type="number" step="any" min="0" placeholder="Ex: 1" className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" value={(formData.credit_rules && formData.credit_rules[d.key]) || ''} onChange={e => setFormData({...formData, credit_rules: {...(formData.credit_rules || {}), [d.key]: e.target.value}})} />
+                  </div>
+                ))}
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6 border-t pt-4">
@@ -1494,7 +1538,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
           category: formData.new_product_category || '',
           buy_price: productBuyPrice || 0,
           sell_price: parseFloat(formData.new_product_sell_price) || 0,
-          quantity: 0
+          quantity: 0,
+          credit_rules: formData.new_product_credit_rules || { '12': '', '6': '', '3': '', '1': '', '0': '' }
         }]).select();
         if (prodErr) throw prodErr;
         if (newProdData && newProdData[0]) {
@@ -1672,8 +1717,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
             if (t.subscription_id) {
                 const sub = subscriptions?.find(s => s.id === t.subscription_id);
                 const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
-                const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
-                    ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:([\d.]+)\]/) 
+                    ? parseFloat(sub.notes.match(/\[CRD:([\d.]+)\]/)[1]) 
                     : parseFloat(sub?.duration_months || 0);
                 const cost = (parseFloat(prod?.buy_price || 0)) * creditsUsed;
                 rowProfit = (parseFloat(t.amount || 0) - cost);
@@ -1710,8 +1755,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
          if (t.subscription_id) {
              const sub = subscriptions?.find(s => s.id === t.subscription_id);
              const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
-               const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
-                   ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+               const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:([\d.]+)\]/) 
+                   ? parseFloat(sub.notes.match(/\[CRD:([\d.]+)\]/)[1]) 
                    : parseFloat(sub?.duration_months);
                const cost = (parseFloat(prod?.buy_price || 0)) * creditsUsed;
              netProfitCredits += (parseFloat(t.amount || 0) - cost);
@@ -1789,7 +1834,7 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
             <Download size={16} className="mr-2" /> Export Excel
           </button>
           <button onClick={() => {
-            setFormData({ id: null, type: 'expense', amount: '', date: new Date().toLocaleString('sv').replace(' ', 'T').slice(0, 16), item_name: '', notes: '', bank_account_id: '', customer_name: '', customer_phone: '', product_id: '', duration_months: 1, credits_to_deduct: 1, supplier_id: '', quantity: 1, unit_price: 0, new_product_name: '', new_product_buy_price: 0, new_product_sell_price: 0, new_supplier_name: '', new_supplier_phone: '', status: 'completed' });
+            setFormData({ id: null, type: 'expense', amount: '', date: new Date().toLocaleString('sv').replace(' ', 'T').slice(0, 16), item_name: '', notes: '', bank_account_id: '', customer_name: '', customer_phone: '', product_id: '', duration_months: 1, credits_to_deduct: 1, supplier_id: '', quantity: 1, unit_price: 0, new_product_name: '', new_product_buy_price: 0, new_product_sell_price: 0, new_product_credit_rules: { '12': '', '6': '', '3': '', '1': '', '0': '' }, new_supplier_name: '', new_supplier_phone: '', status: 'completed' });
             setShowForm(true);
           }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center font-medium shadow-sm transition-colors text-sm">
             <Plus size={16} className="mr-2" /> New Transaction
@@ -1857,7 +1902,22 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Produit Digital</label>
-                    <select required className="w-full border-gray-300 rounded-lg p-2 border" value={formData.product_id} onChange={e => setFormData({...formData, product_id: e.target.value})}>
+                    <select required className="w-full border-gray-300 rounded-lg p-2 border" value={formData.product_id} onChange={e => {
+                      const pid = e.target.value;
+                      let newCredits = formData.credits_to_deduct;
+                      const val = formData.duration_months;
+                      if (pid && pid !== 'NEW_PRODUCT') {
+                        const prod = digitalInventory?.find(p => p.id === pid);
+                        if (prod && prod.credit_rules && prod.credit_rules[val] !== undefined && prod.credit_rules[val] !== '') {
+                          newCredits = parseFloat(prod.credit_rules[val]);
+                        }
+                      } else if (pid === 'NEW_PRODUCT') {
+                        if (formData.new_product_credit_rules && formData.new_product_credit_rules[val] !== undefined && formData.new_product_credit_rules[val] !== '') {
+                          newCredits = parseFloat(formData.new_product_credit_rules[val]);
+                        }
+                      }
+                      setFormData({...formData, product_id: pid, credits_to_deduct: newCredits});
+                    }}>
                       <option value="">Sélectionner produit...</option>
                       {digitalInventory.map(p => <option key={p.id} value={p.id}>{p.name} (Stock: {p.quantity||0})</option>)}
                       <option value="NEW_PRODUCT" className="font-bold text-purple-600">➕ Ajouter un nouveau produit...</option>
@@ -1876,13 +1936,41 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                           <input type="text" className="w-full border p-2 rounded-lg" value={formData.new_product_category} onChange={e=>setFormData({...formData, new_product_category: e.target.value})} placeholder="Ex: Streaming..." />
                         </div>
                       </div>
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-purple-800 mb-2">Règles de déduction de crédits par abonnement (Optionnel)</label>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                          {[
+                            { key: '12', label: '1 An' },
+                            { key: '6', label: '6 Mois' },
+                            { key: '3', label: '3 Mois' },
+                            { key: '1', label: '1 Mois' },
+                            { key: '0', label: 'Test' }
+                          ].map(d => (
+                            <div key={d.key}>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">{d.label}</label>
+                              <input type="number" step="any" min="0" className="w-full border border-gray-300 p-2 rounded-lg" value={(formData.new_product_credit_rules && formData.new_product_credit_rules[d.key]) || ''} onChange={e => setFormData({...formData, new_product_credit_rules: {...(formData.new_product_credit_rules || {}), [d.key]: e.target.value}})} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Durée (Mois)</label>
                     <input type="number" step="any" min="0" className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-purple-500" value={formData.duration_months} onChange={e => {
                       const val = e.target.value === '' ? '' : parseFloat(e.target.value);
-                      setFormData({...formData, duration_months: val, credits_to_deduct: val});
+                      let newCredits = val;
+                      if (formData.product_id && formData.product_id !== 'NEW_PRODUCT') {
+                        const prod = digitalInventory?.find(p => p.id === formData.product_id);
+                        if (prod && prod.credit_rules && prod.credit_rules[val] !== undefined && prod.credit_rules[val] !== '') {
+                          newCredits = parseFloat(prod.credit_rules[val]);
+                        }
+                      } else if (formData.product_id === 'NEW_PRODUCT') {
+                        if (formData.new_product_credit_rules && formData.new_product_credit_rules[val] !== undefined && formData.new_product_credit_rules[val] !== '') {
+                          newCredits = parseFloat(formData.new_product_credit_rules[val]);
+                        }
+                      }
+                      setFormData({...formData, duration_months: val, credits_to_deduct: newCredits});
                     }} />
                   </div>
                   <div>
@@ -1959,6 +2047,23 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Prix de vente standard</label>
                           <input type="number" step="0.01" className="w-full border p-2 rounded-lg" value={formData.new_product_sell_price} onChange={e=>setFormData({...formData, new_product_sell_price: e.target.value})} />
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-purple-800 mb-2">Règles de déduction de crédits par abonnement (Optionnel)</label>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                          {[
+                            { key: '12', label: '1 An' },
+                            { key: '6', label: '6 Mois' },
+                            { key: '3', label: '3 Mois' },
+                            { key: '1', label: '1 Mois' },
+                            { key: '0', label: 'Test' }
+                          ].map(d => (
+                            <div key={d.key}>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">{d.label}</label>
+                              <input type="number" step="any" min="0" className="w-full border border-gray-300 p-2 rounded-lg" value={(formData.new_product_credit_rules && formData.new_product_credit_rules[d.key]) || ''} onChange={e => setFormData({...formData, new_product_credit_rules: {...(formData.new_product_credit_rules || {}), [d.key]: e.target.value}})} />
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -2115,8 +2220,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                               const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
                               if (prod) {
                                   isProductSale = true;
-                                  creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
-                                      ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                                  creditsUsed = sub?.notes && sub.notes.match(/\[CRD:([\d.]+)\]/) 
+                                      ? parseFloat(sub.notes.match(/\[CRD:([\d.]+)\]/)[1]) 
                                       : parseFloat(sub?.duration_months);
                                   buyPricePerCredit = parseFloat(prod?.buy_price || 0);
                                   sellPricePerCredit = parseFloat(t.amount || 0) / creditsUsed;
@@ -2166,8 +2271,8 @@ export const DigitalTransactionsManager = ({ digitalTransactions, supabase, bank
                           if (t.subscription_id) {
                               const sub = subscriptions?.find(s => s.id === t.subscription_id);
                               const prod = digitalInventory?.find(p => p.id === (sub?.product_id || t.digital_product_id));
-                              const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:(\d+)\]/) 
-                                  ? parseInt(sub.notes.match(/\[CRD:(\d+)\]/)[1]) 
+                              const creditsUsed = sub?.notes && sub.notes.match(/\[CRD:([\d.]+)\]/) 
+                                  ? parseFloat(sub.notes.match(/\[CRD:([\d.]+)\]/)[1]) 
                                   : parseFloat(sub?.duration_months);
                               const cost = (parseFloat(prod?.buy_price || 0)) * creditsUsed;
                               rowProfit = (parseFloat(t.amount || 0) - cost);
