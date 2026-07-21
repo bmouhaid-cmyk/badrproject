@@ -456,7 +456,7 @@ const UserManagement = ({ users, setUsers, t }) => {
     }
   };
 
-    const handleArchive = async (tItem) => {
+  const handleArchive = async (tItem) => {
     if (tItem.status !== 'completed') return alert("Vous ne pouvez archiver que les transactions complétées.");
     if (window.confirm("Voulez-vous archiver cette transaction ?")) {
       const { error } = await supabase.from('transactions').update({ is_archived: true }).eq('id', tItem.id);
@@ -468,7 +468,7 @@ const UserManagement = ({ users, setUsers, t }) => {
     }
   };
 
-const handleDelete = async (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm(t('deleteConfirm'))) {
       if (users.length <= 1) {
         alert('Cannot delete the last user!');
@@ -529,7 +529,7 @@ const handleDelete = async (id) => {
                   <option value="admin">{t('admin')}</option>
                 </select>
               </div>
-              
+
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   type="button"
@@ -598,18 +598,18 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
-  
+
   const archivedTransactions = transactions.filter(t => t.is_archived);
-  
+
   const filteredArchived = archivedTransactions.filter(t => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     const itemNameStr = typeof t.item_name === 'string' ? t.item_name : String(t.item_name || '');
     const partyStr = typeof t.party === 'string' ? t.party : String(t.party || '');
     const categoryStr = typeof t.category === 'string' ? t.category : String(t.category || '');
-    return itemNameStr.toLowerCase().includes(term) || 
-           partyStr.toLowerCase().includes(term) || 
-           categoryStr.toLowerCase().includes(term);
+    return itemNameStr.toLowerCase().includes(term) ||
+      partyStr.toLowerCase().includes(term) ||
+      categoryStr.toLowerCase().includes(term);
   });
 
   const handleUnarchive = async (id) => {
@@ -627,7 +627,7 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
       if (window.confirm(`Êtes-vous sûr de vouloir archiver les transactions entre le ${startDate} et le ${endDate} ?`)) {
         const idsToArchive = transactions.filter(t => t && !t.is_archived && t.status === 'completed' && t.date && t.date >= startDate && t.date <= endDate).map(t => t.id);
         if (idsToArchive.length === 0) return alert("Aucune transaction trouvée pour cette période.");
-        
+
         const { error } = await supabase.from('transactions').update({ is_archived: true }).in('id', idsToArchive);
         if (!error) {
           setTransactions(prev => prev.map(t => idsToArchive.includes(t?.id) ? { ...t, is_archived: true } : t));
@@ -642,7 +642,7 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
     }
   };
 
-  
+
   const handleUnarchiveSelected = async () => {
     if (selectedIds.length === 0) return alert("Veuillez sélectionner au moins une transaction.");
     if (window.confirm(`Êtes-vous sûr de vouloir désarchiver ${selectedIds.length} transaction(s) ?`)) {
@@ -663,7 +663,7 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
       if (window.confirm(`Êtes-vous sûr de vouloir désarchiver les transactions entre le ${startDate} et le ${endDate} ?`)) {
         const idsToUnarchive = transactions.filter(t => t && t.is_archived && t.date && t.date >= startDate && t.date <= endDate).map(t => t.id);
         if (idsToUnarchive.length === 0) return alert("Aucune transaction archivée trouvée pour cette période.");
-        
+
         const { error } = await supabase.from('transactions').update({ is_archived: false }).in('id', idsToUnarchive);
         if (!error) {
           setTransactions(prev => prev.map(t => idsToUnarchive.includes(t?.id) ? { ...t, is_archived: false } : t));
@@ -682,7 +682,7 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
     if (window.confirm("Êtes-vous sûr de vouloir archiver le chapitre actuel ? Toutes les transactions complétées seront archivées. Vos soldes resteront intacts.")) {
       const idsToArchive = transactions.filter(t => !t.is_archived && t.status === 'completed').map(t => t.id);
       if (idsToArchive.length === 0) return alert("Aucune transaction à archiver.");
-      
+
       const { error } = await supabase.from('transactions').update({ is_archived: true }).in('id', idsToArchive);
       if (!error) {
         setTransactions(prev => prev.map(t => idsToArchive.includes(t.id) ? { ...t, is_archived: true } : t));
@@ -722,47 +722,47 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
           </button>
         </div>
       </div>
-      
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="mb-4 flex flex-col md:flex-row justify-between items-center gap-4">
-             <input type="text" placeholder="Rechercher dans les archives..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full md:w-1/3 border rounded-lg p-2 text-sm" />
-             {selectedIds.length > 0 && (
-               <button onClick={handleUnarchiveSelected} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium shadow-sm hover:bg-blue-700 flex items-center gap-2">
-                 <RotateCcw size={18} />
-                 Désarchiver Sélection ({selectedIds.length})
-               </button>
-             )}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <input 
-                      type="checkbox" 
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedIds(filteredArchived.map(t => t.id));
-                        } else {
-                          setSelectedIds([]);
-                        }
-                      }}
-                      checked={filteredArchived.length > 0 && selectedIds.length === filteredArchived.length}
-                    />
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('date')}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('type')}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('party')}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('amount')}</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredArchived.map(tx => (
-                  <tr key={tx.id} className="hover:bg-gray-50 opacity-70">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                    <input 
-                      type="checkbox" 
+        <div className="mb-4 flex flex-col md:flex-row justify-between items-center gap-4">
+          <input type="text" placeholder="Rechercher dans les archives..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full md:w-1/3 border rounded-lg p-2 text-sm" />
+          {selectedIds.length > 0 && (
+            <button onClick={handleUnarchiveSelected} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium shadow-sm hover:bg-blue-700 flex items-center gap-2">
+              <RotateCcw size={18} />
+              Désarchiver Sélection ({selectedIds.length})
+            </button>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedIds(filteredArchived.map(t => t.id));
+                      } else {
+                        setSelectedIds([]);
+                      }
+                    }}
+                    checked={filteredArchived.length > 0 && selectedIds.length === filteredArchived.length}
+                  />
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('date')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('type')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('party')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('amount')}</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredArchived.map(tx => (
+                <tr key={tx.id} className="hover:bg-gray-50 opacity-70">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
                       checked={selectedIds.includes(tx.id)}
                       onChange={(e) => {
                         if (e.target.checked) {
@@ -774,22 +774,22 @@ const ArchiveManager = ({ transactions, setTransactions, t, supabase }) => {
                     />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.date}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t(tx.type)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.party || tx.item_name || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{parseFloat(tx.amount || 0).toFixed(2)} MAD</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => handleUnarchive(tx.id)} className="text-blue-600 hover:text-blue-900 flex items-center justify-end gap-1 w-full">
-                        <RotateCcw size={16} /> Désarchiver
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredArchived.length === 0 && (
-                  <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">Aucune transaction archivée trouvée.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t(tx.type)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.party || tx.item_name || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{parseFloat(tx.amount || 0).toFixed(2)} MAD</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onClick={() => handleUnarchive(tx.id)} className="text-blue-600 hover:text-blue-900 flex items-center justify-end gap-1 w-full">
+                      <RotateCcw size={16} /> Désarchiver
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredArchived.length === 0 && (
+                <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">Aucune transaction archivée trouvée.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -812,7 +812,7 @@ function App() {
     const saved = localStorage.getItem('mabox_user');
     return saved ? JSON.parse(saved) : null;
   });
-  
+
   // Digital ERP State
   const [erpMode, setErpMode] = useState(() => localStorage.getItem('mabox_erpMode') || 'physical'); // 'physical' or 'digital'
   const [digitalInventory, setDigitalInventory] = useState([]);
@@ -1041,11 +1041,11 @@ function App() {
 
     const supplierPurchases = transactions.filter(t => t.type === 'purchase' && t.party === supplier.name && (t.status === 'completed' || t.status === 'pending'));
     const supplierPayments = transactions.filter(t => t.type === 'expense' && t.category === 'Supplier Payment' && t.party === supplier.name && t.status === 'completed');
-    
+
     const totalPurchases = histPurchases + supplierPurchases.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     const paidViaCompletedPurchases = supplierPurchases.filter(t => t.status === 'completed').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     const paidViaPartialPayments = supplierPayments.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
-    
+
     const paid = histPaid + paidViaCompletedPurchases + paidViaPartialPayments;
     const balance = totalPurchases - paid;
     return total + (balance > 0 ? balance : 0);
@@ -1103,7 +1103,7 @@ function App() {
               <X size={24} />
             </button>
           </div>
-          
+
           <div className="flex bg-gray-100 p-1 rounded-lg">
             <button
               onClick={() => { setErpMode('physical'); setView('dashboard'); }}
@@ -1252,7 +1252,7 @@ function App() {
             />
           )}
 
-          
+
           {view === 'archives' && (
             <ArchiveManager
               transactions={transactions}
@@ -1353,42 +1353,42 @@ function App() {
 
           {/* --- DIGITAL ERP VIEWS --- */}
           {view === 'digital_dashboard' && (
-            <DigitalDashboard 
-              subscriptions={subscriptions} 
-              digitalTransactions={digitalTransactions} 
+            <DigitalDashboard
+              subscriptions={subscriptions}
+              digitalTransactions={digitalTransactions}
               digitalInventory={digitalInventory}
-              t={t} 
+              t={t}
             />
           )}
           {view === 'digital_abonnements' && (
-            <DigitalAbonnementsManager 
-              subscriptions={subscriptions} 
-              digitalInventory={digitalInventory} 
-              supabase={supabase} 
+            <DigitalAbonnementsManager
+              subscriptions={subscriptions}
+              digitalInventory={digitalInventory}
+              supabase={supabase}
               bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))}
-              t={t} 
+              t={t}
             />
           )}
           {view === 'digital_inventory' && (
-            <DigitalInventoryManager 
-              digitalInventory={digitalInventory} 
+            <DigitalInventoryManager
+              digitalInventory={digitalInventory}
               digitalSuppliers={digitalSuppliers}
               digitalTransactions={digitalTransactions}
               bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))}
-              supabase={supabase} 
-              t={t} 
+              supabase={supabase}
+              t={t}
             />
           )}
           {view === 'digital_treasury' && (
-            <DigitalTreasuryManager 
-              digitalTransactions={digitalTransactions} 
-              bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))} 
+            <DigitalTreasuryManager
+              digitalTransactions={digitalTransactions}
+              bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))}
               supabase={supabase}
             />
           )}
           {view === 'digital_transactions' && (
-            <DigitalTransactionsManager 
-              digitalTransactions={digitalTransactions} 
+            <DigitalTransactionsManager
+              digitalTransactions={digitalTransactions}
               supabase={supabase}
               bankAccounts={bankAccounts.filter(b => b.type?.endsWith('_digital'))}
               digitalInventory={digitalInventory}
@@ -1397,7 +1397,7 @@ function App() {
             />
           )}
           {view === 'digital_suppliers' && (
-            <DigitalSuppliersManager 
+            <DigitalSuppliersManager
               digitalSuppliers={digitalSuppliers}
               digitalTransactions={digitalTransactions}
               digitalInventory={digitalInventory}
@@ -1741,16 +1741,16 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     } else {
       const txsToInsert = [dbTransaction];
       if ((formData.type === 'purchase' || formData.type === 'expense') && formData.status === 'completed' && formData.bankFees && parseFloat(formData.bankFees) > 0) {
-          txsToInsert.push({
-              date: dbTransaction.date,
-              type: 'expense',
-              category: 'Frais Bancaires',
-              party: 'Banque',
-              amount: parseFloat(formData.bankFees),
-              status: 'completed',
-              bank_account_id: formData.bankAccountId,
-              notes: `Frais de paiement pour ${dbTransaction.party || 'Transaction'} (Achat/Dépense)`
-          });
+        txsToInsert.push({
+          date: dbTransaction.date,
+          type: 'expense',
+          category: 'Frais Bancaires',
+          party: 'Banque',
+          amount: parseFloat(formData.bankFees),
+          status: 'completed',
+          bank_account_id: formData.bankAccountId,
+          notes: `Frais de paiement pour ${dbTransaction.party || 'Transaction'} (Achat/Dépense)`
+        });
       }
 
       const { data: insertData, error: insertError } = await supabase.from('transactions').insert(txsToInsert).select();
@@ -1905,25 +1905,25 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     if (window.confirm(t('deleteConfirm'))) {
       // 1. Revert inventory for each if not already refused/deleted
       for (const id of selectedTransactions) {
-          const tx = transactions.find(t => t.id === id);
-          if (tx && tx.item_id && tx.status !== 'refused' && tx.status !== 'deleted') {
-              const item = inventory.find(i => i.id === tx.item_id);
-              if (item) {
-                  let qtyChange = 0;
-                  const qty = parseInt(tx.quantity || 0);
-                  if (tx.type === 'sale') qtyChange = qty;
-                  else if (tx.type === 'purchase') qtyChange = -qty;
-                  
-                  if (qtyChange !== 0) {
-                      const newQty = parseInt(item.quantity) + qtyChange;
-                      let newInitial = parseInt(item.initial_quantity || item.quantity);
-                      if (tx.type === 'purchase') newInitial = Math.max(0, newInitial - qty);
-                      
-                      await supabase.from('inventory').update({ quantity: newQty, initial_quantity: newInitial }).eq('id', item.id);
-                      setInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: newQty, initial_quantity: newInitial } : i));
-                  }
-              }
+        const tx = transactions.find(t => t.id === id);
+        if (tx && tx.item_id && tx.status !== 'refused' && tx.status !== 'deleted') {
+          const item = inventory.find(i => i.id === tx.item_id);
+          if (item) {
+            let qtyChange = 0;
+            const qty = parseInt(tx.quantity || 0);
+            if (tx.type === 'sale') qtyChange = qty;
+            else if (tx.type === 'purchase') qtyChange = -qty;
+
+            if (qtyChange !== 0) {
+              const newQty = parseInt(item.quantity) + qtyChange;
+              let newInitial = parseInt(item.initial_quantity || item.quantity);
+              if (tx.type === 'purchase') newInitial = Math.max(0, newInitial - qty);
+
+              await supabase.from('inventory').update({ quantity: newQty, initial_quantity: newInitial }).eq('id', item.id);
+              setInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: newQty, initial_quantity: newInitial } : i));
+            }
           }
+        }
       }
 
       // 2. Soft delete
@@ -1975,7 +1975,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
         // Action: Add back to stock (Revert)
         const isOldInactive = oldStatus === 'refused' || oldStatus === 'deleted';
         const isNewInactive = newStatus === 'refused' || newStatus === 'deleted';
-        
+
         if (!isOldInactive && isNewInactive) {
           if (transaction.type === 'sale') qtyChange = qty; // Add back
           else if (transaction.type === 'purchase') qtyChange = -qty; // Remove (un-buy)
@@ -2267,7 +2267,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                       />
                       <datalist id="transaction-categories">
                         {categories.map((c, i) => <option key={i} value={c} />)}
-                        {[...new Set(inventory.map(i => i.category).filter(Boolean))].map((c, i) => <option key={'inv'+i} value={c} />)}
+                        {[...new Set(inventory.map(i => i.category).filter(Boolean))].map((c, i) => <option key={'inv' + i} value={c} />)}
                       </datalist>
                     </div>
                     <div>
@@ -2506,15 +2506,15 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               )}
 
               {formData.type === 'sale' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">{t('notes')}</label>
-                <textarea
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                  value={formData.notes}
-                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                />
-              </div>
-            )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">{t('notes')}</label>
+                  <textarea
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                    value={formData.notes}
+                    onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                  />
+                </div>
+              )}
 
               <div className="flex justify-end space-x-3 mt-6">
                 <button
@@ -2699,10 +2699,10 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedItemForAction, setSelectedItemForAction] = useState(null);
-  
-  const [purchaseForm, setPurchaseForm] = useState({ 
-    date: new Date().toISOString().split('T')[0], 
-    supplier: '', quantity: '', amount: '', status: 'pending', bankAccountId: '' 
+
+  const [purchaseForm, setPurchaseForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    supplier: '', quantity: '', amount: '', status: 'pending', bankAccountId: ''
   });
 
   const handleExport = () => {
@@ -2761,19 +2761,19 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
               notes: 'Initial inventory creation',
               bank_account_id: formData.paymentStatus === 'completed' ? (formData.bankAccountId || null) : null
             };
-            
+
             const txsToInsert = [transaction];
             if (formData.paymentStatus === 'completed' && formData.bankFees && parseFloat(formData.bankFees) > 0) {
-                txsToInsert.push({
-                    date: transaction.date,
-                    type: 'expense',
-                    category: 'Frais Bancaires',
-                    party: 'Banque',
-                    amount: parseFloat(formData.bankFees),
-                    status: 'completed',
-                    bank_account_id: formData.bankAccountId,
-                    notes: `Frais de paiement pour ${dbItem.supplier || 'Stock Initial'} (Ajout Produit)`
-                });
+              txsToInsert.push({
+                date: transaction.date,
+                type: 'expense',
+                category: 'Frais Bancaires',
+                party: 'Banque',
+                amount: parseFloat(formData.bankFees),
+                status: 'completed',
+                bank_account_id: formData.bankAccountId,
+                notes: `Frais de paiement pour ${dbItem.supplier || 'Stock Initial'} (Ajout Produit)`
+              });
             }
 
             const { data: txData } = await supabase.from('transactions').insert(txsToInsert).select();
@@ -2805,11 +2805,11 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
     e.preventDefault();
     let targetItem = selectedItemForAction;
     if (!targetItem) {
-        // Find if they selected an item in the form
-        if (!purchaseForm.itemId) return alert("Veuillez sélectionner un produit");
-        targetItem = inventory.find(i => i.id === purchaseForm.itemId);
+      // Find if they selected an item in the form
+      if (!purchaseForm.itemId) return alert("Veuillez sélectionner un produit");
+      targetItem = inventory.find(i => i.id === purchaseForm.itemId);
     }
-    
+
     const dbTransaction = {
       date: purchaseForm.date,
       type: 'purchase',
@@ -2825,12 +2825,12 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
     const { data, error } = await supabase.from('transactions').insert([dbTransaction]).select();
     if (data) {
       setTransactions(prev => [data[0], ...prev]);
-      
+
       const currentQty = parseInt(targetItem.quantity || 0);
       const newQty = parseInt(purchaseForm.quantity);
       const currentBuyPrice = parseFloat(targetItem.buy_price || 0);
-      const purchasePrice = parseFloat(purchaseForm.amount) / newQty; 
-      
+      const purchasePrice = parseFloat(purchaseForm.amount) / newQty;
+
       const totalValue = (currentQty * currentBuyPrice) + parseFloat(purchaseForm.amount);
       const totalQty = currentQty + newQty;
       const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
@@ -2839,62 +2839,62 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
 
       await supabase.from('inventory').update({ quantity: totalQty, buy_price: newBuyPrice, initial_quantity: newInitial }).eq('id', targetItem.id);
       setInventory(prev => prev.map(i => i.id === targetItem.id ? { ...i, quantity: totalQty, buy_price: newBuyPrice, initial_quantity: newInitial } : i));
-      
+
       setShowPurchaseModal(false);
       setPurchaseForm({ date: new Date().toISOString().split('T')[0], supplier: '', quantity: '', amount: '', status: 'pending', bankAccountId: '' });
       setSelectedItemForAction(null);
     } else if (error) {
-        alert(error.message);
+      alert(error.message);
     }
   };
 
   const openPurchaseModal = (item = null) => {
-      setSelectedItemForAction(item);
-      setPurchaseForm({ ...purchaseForm, supplier: item ? (item.supplier || '') : '', itemId: item ? item.id : '' });
-      setShowPurchaseModal(true);
+    setSelectedItemForAction(item);
+    setPurchaseForm({ ...purchaseForm, supplier: item ? (item.supplier || '') : '', itemId: item ? item.id : '' });
+    setShowPurchaseModal(true);
   };
 
   const openHistoryModal = (item = null) => {
-      setSelectedItemForAction(item);
-      setShowHistoryModal(true);
+    setSelectedItemForAction(item);
+    setShowHistoryModal(true);
   };
 
   const filteredInventory = [...inventory].filter(item => {
-      const searchTermLower = searchTerm.toLowerCase();
-      const matchesSearch = item.name.toLowerCase().includes(searchTermLower) ||
-                            (item.category && item.category.toLowerCase().includes(searchTermLower)) ||
-                            (item.supplier && item.supplier.toLowerCase().includes(searchTermLower));
-      const isLowStock = parseInt(item.quantity) <= parseInt(item.low_stock_threshold);
-      const isOutOfStock = parseInt(item.quantity) <= 0;
-      let matchesStatus = true;
-      if (statusFilter === 'Disponible') matchesStatus = !isOutOfStock && !isLowStock;
-      if (statusFilter === 'Stock Bas') matchesStatus = isLowStock && !isOutOfStock;
-      if (statusFilter === 'Rupture') matchesStatus = isOutOfStock;
-      return matchesSearch && matchesStatus;
+    const searchTermLower = searchTerm.toLowerCase();
+    const matchesSearch = item.name.toLowerCase().includes(searchTermLower) ||
+      (item.category && item.category.toLowerCase().includes(searchTermLower)) ||
+      (item.supplier && item.supplier.toLowerCase().includes(searchTermLower));
+    const isLowStock = parseInt(item.quantity) <= parseInt(item.low_stock_threshold);
+    const isOutOfStock = parseInt(item.quantity) <= 0;
+    let matchesStatus = true;
+    if (statusFilter === 'Disponible') matchesStatus = !isOutOfStock && !isLowStock;
+    if (statusFilter === 'Stock Bas') matchesStatus = isLowStock && !isOutOfStock;
+    if (statusFilter === 'Rupture') matchesStatus = isOutOfStock;
+    return matchesSearch && matchesStatus;
   }).sort((a, b) => {
     if (!sortConfig.key) return 0;
-    
+
     let aVal = a[sortConfig.key];
     let bVal = b[sortConfig.key];
-    
+
     if (sortConfig.key === 'totalValue') {
-       aVal = a.buy_price * a.quantity;
-       bVal = b.buy_price * b.quantity;
+      aVal = a.buy_price * a.quantity;
+      bVal = b.buy_price * b.quantity;
     } else if (sortConfig.key === 'status') {
-       const getStatusStr = (q, t) => parseInt(q) <= 0 ? 'c' : (parseInt(q) <= parseInt(t) ? 'b' : 'a');
-       aVal = getStatusStr(a.quantity, a.low_stock_threshold);
-       bVal = getStatusStr(b.quantity, b.low_stock_threshold);
+      const getStatusStr = (q, t) => parseInt(q) <= 0 ? 'c' : (parseInt(q) <= parseInt(t) ? 'b' : 'a');
+      aVal = getStatusStr(a.quantity, a.low_stock_threshold);
+      bVal = getStatusStr(b.quantity, b.low_stock_threshold);
     }
-    
+
     if (aVal === undefined || aVal === null) aVal = '';
     if (bVal === undefined || bVal === null) bVal = '';
 
     if (typeof aVal === 'string') {
-        aVal = aVal.toLowerCase();
-        bVal = bVal.toLowerCase();
+      aVal = aVal.toLowerCase();
+      bVal = bVal.toLowerCase();
     } else {
-        aVal = parseFloat(aVal) || 0;
-        bVal = parseFloat(bVal) || 0;
+      aVal = parseFloat(aVal) || 0;
+      bVal = parseFloat(bVal) || 0;
     }
 
     if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -2923,7 +2923,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
           </div>
           <p className="text-3xl font-bold text-gray-900">{formatCurrency(inventory.reduce((sum, item) => sum + (item.buy_price * item.quantity), 0))}</p>
         </div>
-        
+
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-green-50 text-green-600 rounded-lg"><FileText size={20} /></div>
@@ -2960,7 +2960,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
             <option>Tous les Statuts</option><option>Disponible</option><option>Stock Bas</option><option>Rupture</option>
           </select>
         </div>
-        
+
         <div className="flex items-center space-x-2 overflow-x-auto w-full xl:w-auto pb-2 xl:pb-0">
           <button onClick={() => openHistoryModal()} className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
             <FileText size={16} /><span>Historique Mouvements</span>
@@ -3018,30 +3018,30 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
                   <input type="number" required className="mt-1 block w-full rounded-md border p-2" value={formData.lowStockThreshold} onChange={e => setFormData({ ...formData, lowStockThreshold: e.target.value })} />
                 </div>
               </div>
-              
+
               {!isEditing && formData.quantity > 0 && (
                 <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4 space-y-4">
                   <h5 className="font-medium text-gray-800 flex items-center gap-2"><CreditCard size={18} className="text-blue-500" /> Détails du Paiement (Stock Initial)</h5>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
-                    <select className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.paymentStatus} onChange={(e) => setFormData({...formData, paymentStatus: e.target.value})}>
-                        <option value="none">Ignorer (Stock Existant)</option>
-                        <option value="pending">NON PAYÉ (Crédit)</option>
-                        <option value="completed">PAYÉ (Immédiat)</option>
+                    <select className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.paymentStatus} onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}>
+                      <option value="none">Ignorer (Stock Existant)</option>
+                      <option value="pending">NON PAYÉ (Crédit)</option>
+                      <option value="completed">PAYÉ (Immédiat)</option>
                     </select>
                   </div>
                   {formData.paymentStatus === 'completed' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse</label>
-                        <select required className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankAccountId} onChange={(e) => setFormData({...formData, bankAccountId: e.target.value})}>
-                            <option value="">Sélectionner un compte</option>
-                            {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        <select required className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankAccountId} onChange={(e) => setFormData({ ...formData, bankAccountId: e.target.value })}>
+                          <option value="">Sélectionner un compte</option>
+                          {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
-                        <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankFees} onChange={(e) => setFormData({...formData, bankFees: e.target.value})} placeholder="Optionnel" />
+                        <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border bg-white" value={formData.bankFees} onChange={(e) => setFormData({ ...formData, bankFees: e.target.value })} placeholder="Optionnel" />
                       </div>
                     </div>
                   )}
@@ -3067,7 +3067,7 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('category')}>Catégorie {sortConfig.key === 'category' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('supplier')}>Fournisseur {sortConfig.key === 'supplier' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('quantity')}>Quantité {sortConfig.key === 'quantity' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('buy_price')}>Prix d'Achat Moyen {sortConfig.key === 'buy_price' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}<br/><span className="text-[10px] text-gray-400 font-normal">(CMUP)</span></th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('buy_price')}>Prix d'Achat Moyen {sortConfig.key === 'buy_price' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}<br /><span className="text-[10px] text-gray-400 font-normal">(CMUP)</span></th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('totalValue')}>Valeur Totale {sortConfig.key === 'totalValue' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('status')}>Statut {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
@@ -3153,53 +3153,53 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
               {!selectedItemForAction && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Produit</label>
-                  <select required className="w-full border rounded-lg p-2" value={purchaseForm.itemId} onChange={(e) => setPurchaseForm({...purchaseForm, itemId: e.target.value})}>
-                      <option value="">Sélectionner un produit</option>
-                      {inventory.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  <select required className="w-full border rounded-lg p-2" value={purchaseForm.itemId} onChange={(e) => setPurchaseForm({ ...purchaseForm, itemId: e.target.value })}>
+                    <option value="">Sélectionner un produit</option>
+                    {inventory.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                   </select>
                 </div>
               )}
               {selectedItemForAction && (
-                  <div className="bg-gray-50 p-3 rounded-lg mb-4">
-                      <p className="text-sm font-bold text-gray-800">{selectedItemForAction.name}</p>
-                      <p className="text-xs text-gray-500">Stock Actuel: {selectedItemForAction.quantity}</p>
-                  </div>
+                <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                  <p className="text-sm font-bold text-gray-800">{selectedItemForAction.name}</p>
+                  <p className="text-xs text-gray-500">Stock Actuel: {selectedItemForAction.quantity}</p>
+                </div>
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur</label>
-                <select required className="w-full border rounded-lg p-2" value={purchaseForm.supplier} onChange={(e) => setPurchaseForm({...purchaseForm, supplier: e.target.value})}>
-                    <option value="">Sélectionner un fournisseur</option>
-                    {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                <select required className="w-full border rounded-lg p-2" value={purchaseForm.supplier} onChange={(e) => setPurchaseForm({ ...purchaseForm, supplier: e.target.value })}>
+                  <option value="">Sélectionner un fournisseur</option>
+                  {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantité Achetée</label>
-                    <input required type="number" min="1" className="w-full border rounded-lg p-2" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({...purchaseForm, quantity: e.target.value})} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Montant (MAD)</label>
-                    <input required type="number" step="0.01" min="0" className="w-full border rounded-lg p-2" value={purchaseForm.amount} onChange={(e) => setPurchaseForm({...purchaseForm, amount: e.target.value})} />
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantité Achetée</label>
+                  <input required type="number" min="1" className="w-full border rounded-lg p-2" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({ ...purchaseForm, quantity: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Total Montant (MAD)</label>
+                  <input required type="number" step="0.01" min="0" className="w-full border rounded-lg p-2" value={purchaseForm.amount} onChange={(e) => setPurchaseForm({ ...purchaseForm, amount: e.target.value })} />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Statut du Paiement</label>
-                <select className="w-full border rounded-lg p-2" value={purchaseForm.status} onChange={(e) => setPurchaseForm({...purchaseForm, status: e.target.value})}>
-                    <option value="pending">NON PAYÉ (Crédit - Dette Fournisseur)</option>
-                    <option value="completed">PAYÉ (Immédiat - Sortie de Trésorerie)</option>
+                <select className="w-full border rounded-lg p-2" value={purchaseForm.status} onChange={(e) => setPurchaseForm({ ...purchaseForm, status: e.target.value })}>
+                  <option value="pending">NON PAYÉ (Crédit - Dette Fournisseur)</option>
+                  <option value="completed">PAYÉ (Immédiat - Sortie de Trésorerie)</option>
                 </select>
               </div>
               {purchaseForm.status === 'completed' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse Source</label>
-                    <select required className="w-full border rounded-lg p-2" value={purchaseForm.bankAccountId} onChange={(e) => setPurchaseForm({...purchaseForm, bankAccountId: e.target.value})}>
-                        <option value="">Sélectionner un compte</option>
-                        {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse Source</label>
+                  <select required className="w-full border rounded-lg p-2" value={purchaseForm.bankAccountId} onChange={(e) => setPurchaseForm({ ...purchaseForm, bankAccountId: e.target.value })}>
+                    <option value="">Sélectionner un compte</option>
+                    {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
               )}
               <div className="pt-4 flex justify-end gap-3">
-                  <button type="submit" className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium">Enregistrer l'Achat</button>
+                <button type="submit" className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium">Enregistrer l'Achat</button>
               </div>
             </form>
           </div>
@@ -3212,39 +3212,39 @@ const InventoryManager = ({ inventory, setInventory, transactions, setTransactio
           <div className="bg-white rounded-2xl p-6 max-w-4xl w-full shadow-2xl relative max-h-[80vh] flex flex-col">
             <button onClick={() => setShowHistoryModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={20} /></button>
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><History size={20} className="text-indigo-500" /> Historique des Mouvements {selectedItemForAction ? `- ${selectedItemForAction.name}` : '(Tous les produits)'}</h3>
-            
+
             <div className="overflow-y-auto flex-1 border rounded-lg">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Produit</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Qté</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Montant</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-100">
-                        {transactions
-                            .filter(t => (t.type === 'purchase' || t.type === 'sale') && !t.is_archived && (!selectedItemForAction || t.item_id === selectedItemForAction.id))
-                            .map(t => (
-                            <tr key={t.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                    {t.type === 'purchase' 
-                                        ? <span className="text-orange-600 font-medium text-sm">Entrée (Achat/Initial)</span>
-                                        : <span className="text-green-600 font-medium text-sm">Sortie (Vente)</span>
-                                    }
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{t.item_name}</td>
-                                <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
-                                    {t.type === 'purchase' ? <span className="text-orange-600">+{t.quantity}</span> : <span className="text-green-600">-{t.quantity}</span>}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-right text-sm">MAD {parseFloat(t.amount || 0).toLocaleString()}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Produit</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Qté</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Montant</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {transactions
+                    .filter(t => (t.type === 'purchase' || t.type === 'sale') && !t.is_archived && (!selectedItemForAction || t.item_id === selectedItemForAction.id))
+                    .map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {t.type === 'purchase'
+                            ? <span className="text-orange-600 font-medium text-sm">Entrée (Achat/Initial)</span>
+                            : <span className="text-green-600 font-medium text-sm">Sortie (Vente)</span>
+                          }
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{t.item_name}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
+                          {t.type === 'purchase' ? <span className="text-orange-600">+{t.quantity}</span> : <span className="text-green-600">-{t.quantity}</span>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm">MAD {parseFloat(t.amount || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -3607,8 +3607,8 @@ const HistoryView = ({ transactions, inventory, t }) => {
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                         ${tItem.status === 'completed' ? 'bg-green-100 text-green-800' :
                           tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
-                          tItem.status === 'deleted' ? 'bg-gray-200 text-gray-800' :
-                            'bg-yellow-100 text-yellow-800'
+                            tItem.status === 'deleted' ? 'bg-gray-200 text-gray-800' :
+                              'bg-yellow-100 text-yellow-800'
                         }`}>
                         {tItem.status === 'deleted' ? 'Supprimé' : t(tItem.status || 'pending')}
                       </span>
@@ -3646,8 +3646,8 @@ const HistoryView = ({ transactions, inventory, t }) => {
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
                         ${tItem.status === 'completed' ? 'bg-green-100 text-green-800' :
                           tItem.status === 'refused' ? 'bg-red-100 text-red-800' :
-                          tItem.status === 'deleted' ? 'bg-gray-200 text-gray-800' :
-                            'bg-yellow-100 text-yellow-800'
+                            tItem.status === 'deleted' ? 'bg-gray-200 text-gray-800' :
+                              'bg-yellow-100 text-yellow-800'
                         }`}>
                         {tItem.status === 'deleted' ? 'Supprimé' : t(tItem.status || 'pending')}
                       </span>
@@ -3690,21 +3690,21 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState('');
-  
+
   // Releve state
   const [releveStartDate, setReleveStartDate] = useState('');
   const [releveEndDate, setReleveEndDate] = useState('');
   const [releveSelectedIds, setReleveSelectedIds] = useState([]);
 
   // Purchase form state
-  const [purchaseForm, setPurchaseForm] = useState({ 
-    date: new Date().toISOString().split('T')[0], 
-    mode: 'detailed', 
-    itemId: '', 
-    quantity: '1', 
-    amount: '', 
-    status: 'pending', 
-    bankAccountId: '', 
+  const [purchaseForm, setPurchaseForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    mode: 'detailed',
+    itemId: '',
+    quantity: '1',
+    amount: '',
+    status: 'pending',
+    bankAccountId: '',
     fees: '',
     detailedItems: [{ id: generateId(), itemId: '', quantity: '1', price: '' }],
     category: '',
@@ -3721,19 +3721,19 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
 
     const supplierPurchases = transactions.filter(t => t.type === 'purchase' && t.party === supplierName && (t.status === 'completed' || t.status === 'pending'));
     const supplierPayments = transactions.filter(t => t.type === 'expense' && t.category === 'Supplier Payment' && t.party === supplierName && t.status === 'completed');
-    
+
     const totalPurchases = histPurchases + supplierPurchases.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     const paidViaCompletedPurchases = supplierPurchases.filter(t => t.status === 'completed').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     const paidViaPartialPayments = supplierPayments.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
-    
+
     const paid = histPaid + paidViaCompletedPurchases + paidViaPartialPayments;
     const balance = totalPurchases - paid;
     const products = [...new Set(supplierPurchases.map(t => {
-       if (t.item_id) {
-           const item = inventory.find(i => i.id === t.item_id);
-           return item ? item.name : 'Produit';
-       }
-       return t.category;
+      if (t.item_id) {
+        const item = inventory.find(i => i.id === t.item_id);
+        return item ? item.name : 'Produit';
+      }
+      return t.category;
     }).filter(Boolean))].join(', ');
     return { totalPurchases, paid, balance, products };
   };
@@ -3741,12 +3741,12 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   let totalDebts = 0;
   let purchaseVolume = 0;
   let totalPaid = 0;
-  
+
   suppliers.forEach(s => {
-      const stats = getSupplierStats(s.name);
-      totalDebts += (stats.balance > 0 ? stats.balance : 0);
-      purchaseVolume += stats.totalPurchases;
-      totalPaid += stats.paid;
+    const stats = getSupplierStats(s.name);
+    totalDebts += (stats.balance > 0 ? stats.balance : 0);
+    purchaseVolume += stats.totalPurchases;
+    totalPaid += stats.paid;
   });
 
   const activeSuppliers = suppliers.length;
@@ -3754,63 +3754,63 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
   const getGroupedReleveTransactions = () => {
     if (!selectedSupplier) return [];
     let filtered = transactions.filter(t => t.party === selectedSupplier && (t.type === 'purchase' || (t.type === 'expense' && t.category === 'Supplier Payment')));
-    
+
     if (releveStartDate) filtered = filtered.filter(t => t.date >= releveStartDate);
     if (releveEndDate) filtered = filtered.filter(t => t.date <= releveEndDate);
 
     const groups = {};
     const result = [];
-    
+
     filtered.forEach(t => {
-       if (t.type === 'purchase' && t.notes && t.notes.includes('Réf:')) {
-           const key = `${t.date}_${t.category}_${t.notes}`;
-           if (!groups[key]) {
-               groups[key] = {
-                   id: t.id,
-                   isGroup: true,
-                   date: t.date,
-                   type: 'purchase',
-                   category: t.category,
-                   notes: t.notes,
-                   items: [],
-                   totalAmount: 0,
-                   status: t.status
-               };
-               result.push(groups[key]);
-           }
-           groups[key].items.push({ name: t.item_name, quantity: t.quantity, amount: t.amount });
-           groups[key].totalAmount += parseFloat(t.amount || 0);
-       } else {
-           result.push({
-               ...t,
-               isGroup: false,
-               totalAmount: parseFloat(t.amount || 0)
-           });
-       }
+      if (t.type === 'purchase' && t.notes && t.notes.includes('Réf:')) {
+        const key = `${t.date}_${t.category}_${t.notes}`;
+        if (!groups[key]) {
+          groups[key] = {
+            id: t.id,
+            isGroup: true,
+            date: t.date,
+            type: 'purchase',
+            category: t.category,
+            notes: t.notes,
+            items: [],
+            totalAmount: 0,
+            status: t.status
+          };
+          result.push(groups[key]);
+        }
+        groups[key].items.push({ name: t.item_name, quantity: t.quantity, amount: t.amount });
+        groups[key].totalAmount += parseFloat(t.amount || 0);
+      } else {
+        result.push({
+          ...t,
+          isGroup: false,
+          totalAmount: parseFloat(t.amount || 0)
+        });
+      }
     });
-    
+
     return result.sort((a, b) => new Date(b.date) - new Date(a.date));
   };
 
   const handleExportSelectionCSV = () => {
     const groupedTx = getGroupedReleveTransactions();
     const selectedTx = groupedTx.filter(t => releveSelectedIds.includes(t.id));
-    
+
     if (selectedTx.length === 0) {
-        alert("Veuillez sélectionner au moins une transaction à exporter.");
-        return;
+      alert("Veuillez sélectionner au moins une transaction à exporter.");
+      return;
     }
-    
+
     const headers = ['Date', 'Type', 'Catégorie', 'Notes', 'Montant (MAD)'];
     const csvContent = [
-        headers.join(','),
-        ...selectedTx.map(t => {
-            const typeStr = t.type === 'purchase' ? (t.isGroup ? 'Achat Détaillé' : 'Achat') : 'Paiement';
-            const notes = `"${(t.notes || '').replace(/"/g, '""')}"`;
-            return `${t.date},${typeStr},${t.category || ''},${notes},${t.totalAmount}`;
-        })
+      headers.join(','),
+      ...selectedTx.map(t => {
+        const typeStr = t.type === 'purchase' ? (t.isGroup ? 'Achat Détaillé' : 'Achat') : 'Paiement';
+        const notes = `"${(t.notes || '').replace(/"/g, '""')}"`;
+        return `${t.date},${typeStr},${t.category || ''},${notes},${t.totalAmount}`;
+      })
     ].join('\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -3823,8 +3823,8 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
       const histPurchases = parseFloat(newSupplier.totalPurchases || 0);
       const histPaid = newSupplier.totalPaid === '' ? histPurchases : parseFloat(newSupplier.totalPaid || 0);
 
-      const supplierData = { 
-        name: newSupplier.name, 
+      const supplierData = {
+        name: newSupplier.name,
         contact: newSupplier.contact,
         historical_purchases: histPurchases,
         historical_paid: histPaid
@@ -3832,38 +3832,38 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
 
       if (editingId) {
         const originalSupplier = suppliers.find(s => s.id === editingId);
-        
+
         const { data, error } = await supabase.from('suppliers').update(supplierData).eq('id', editingId).select();
         if (data) {
           setSuppliers(suppliers.map(s => s.id === editingId ? data[0] : s));
-          
+
           let updatedTx = [...transactions];
-          
+
           // Cascading Name Change to Transactions
           if (originalSupplier.name !== newSupplier.name) {
-              await supabase.from('transactions').update({ party: newSupplier.name }).eq('party', originalSupplier.name);
-              
-              const oldNotes = `pour ${originalSupplier.name}`;
-              const newNotes = `pour ${newSupplier.name}`;
-              const feesToUpdate = transactions.filter(t => t.category === 'Frais Bancaires' && t.notes && t.notes.includes(oldNotes));
-              for(const fee of feesToUpdate) {
-                  const updatedNotes = fee.notes.replace(oldNotes, newNotes);
-                  await supabase.from('transactions').update({ notes: updatedNotes }).eq('id', fee.id);
-              }
+            await supabase.from('transactions').update({ party: newSupplier.name }).eq('party', originalSupplier.name);
 
-              updatedTx = updatedTx.map(t => {
-                  let modified = t;
-                  if (t.party === originalSupplier.name) {
-                      modified = { ...modified, party: newSupplier.name };
-                  }
-                  if (t.category === 'Frais Bancaires' && t.notes && t.notes.includes(oldNotes)) {
-                      modified = { ...modified, notes: t.notes.replace(oldNotes, newNotes) };
-                  }
-                  return modified;
-              });
-              setTransactions(updatedTx);
+            const oldNotes = `pour ${originalSupplier.name}`;
+            const newNotes = `pour ${newSupplier.name}`;
+            const feesToUpdate = transactions.filter(t => t.category === 'Frais Bancaires' && t.notes && t.notes.includes(oldNotes));
+            for (const fee of feesToUpdate) {
+              const updatedNotes = fee.notes.replace(oldNotes, newNotes);
+              await supabase.from('transactions').update({ notes: updatedNotes }).eq('id', fee.id);
+            }
+
+            updatedTx = updatedTx.map(t => {
+              let modified = t;
+              if (t.party === originalSupplier.name) {
+                modified = { ...modified, party: newSupplier.name };
+              }
+              if (t.category === 'Frais Bancaires' && t.notes && t.notes.includes(oldNotes)) {
+                modified = { ...modified, notes: t.notes.replace(oldNotes, newNotes) };
+              }
+              return modified;
+            });
+            setTransactions(updatedTx);
           }
-          
+
           setNewSupplier({ name: '', contact: '', totalPurchases: '', totalPaid: '' });
           setEditingId(null);
           setShowAddForm(false);
@@ -3887,27 +3887,27 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
       // 1. Revert Inventory Quantities
       const supplierPurchases = transactions.filter(t => t.party === supplierToDelete.name && t.type === 'purchase');
       for (const purchase of supplierPurchases) {
-          if (purchase.item_id) {
-              const item = inventory.find(i => i.id === purchase.item_id);
-              if (item) {
-                  const currentQty = parseInt(item.quantity || 0);
-                  const purchaseQty = parseInt(purchase.quantity || 0);
-                  const newQty = Math.max(0, currentQty - purchaseQty);
-                  
-                  const currentInitial = parseInt(item.initial_quantity || item.quantity || 0);
-                  const newInitial = Math.max(0, currentInitial - purchaseQty);
+        if (purchase.item_id) {
+          const item = inventory.find(i => i.id === purchase.item_id);
+          if (item) {
+            const currentQty = parseInt(item.quantity || 0);
+            const purchaseQty = parseInt(purchase.quantity || 0);
+            const newQty = Math.max(0, currentQty - purchaseQty);
 
-                  await supabase.from('inventory').update({ quantity: newQty, initial_quantity: newInitial }).eq('id', item.id);
-                  setInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: newQty, initial_quantity: newInitial } : i));
-              }
+            const currentInitial = parseInt(item.initial_quantity || item.quantity || 0);
+            const newInitial = Math.max(0, currentInitial - purchaseQty);
+
+            await supabase.from('inventory').update({ quantity: newQty, initial_quantity: newInitial }).eq('id', item.id);
+            setInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: newQty, initial_quantity: newInitial } : i));
           }
+        }
       }
 
       // 2. Delete related fee transactions (Frais Bancaires)
       const feesNotesStr = `pour ${supplierToDelete.name}`;
       const feesToDelete = transactions.filter(t => t.category === 'Frais Bancaires' && t.notes && t.notes.includes(feesNotesStr));
       for (const fee of feesToDelete) {
-          await supabase.from('transactions').delete().eq('id', fee.id);
+        await supabase.from('transactions').delete().eq('id', fee.id);
       }
 
       // 3. Delete all supplier transactions
@@ -3918,15 +3918,15 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
 
       // 5. Add History Log
       const deletionLog = {
-          date: new Date().toISOString().split('T')[0],
-          type: 'expense',
-          category: 'Log Système',
-          party: 'Système',
-          amount: 0,
-          status: 'completed',
-          notes: `Suppression du fournisseur "${supplierToDelete.name}" et de son historique.`
+        date: new Date().toISOString().split('T')[0],
+        type: 'expense',
+        category: 'Log Système',
+        party: 'Système',
+        amount: 0,
+        status: 'completed',
+        notes: `Suppression du fournisseur "${supplierToDelete.name}" et de son historique.`
       };
-      
+
       const { data: logData } = await supabase.from('transactions').insert([deletionLog]).select();
 
       // 6. Update local state
@@ -3934,7 +3934,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
       const feesIds = feesToDelete.map(f => f.id);
       let updatedTransactions = transactions.filter(t => t.party !== supplierToDelete.name && !feesIds.includes(t.id));
       if (logData) {
-          updatedTransactions = [logData[0], ...updatedTransactions];
+        updatedTransactions = [logData[0], ...updatedTransactions];
       }
       setTransactions(updatedTransactions);
     }
@@ -3942,10 +3942,10 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
 
   const handlePurchaseSubmit = async (e) => {
     e.preventDefault();
-    
+
     let transactionsToInsert = [];
     let inventoryUpdates = [];
-    
+
     const commonFields = {
       date: purchaseForm.date,
       type: 'purchase',
@@ -3958,104 +3958,104 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
 
     if (purchaseForm.mode === 'detailed') {
       purchaseForm.detailedItems.forEach(dItem => {
-         const item = inventory.find(i => i.id === dItem.itemId);
-         const lineAmount = parseFloat(dItem.price || 0) * parseInt(dItem.quantity || 1);
-         
-         if (item) {
-             transactionsToInsert.push({
-               ...commonFields,
-               item_id: dItem.itemId,
-               item_name: item.name,
-               quantity: parseInt(dItem.quantity || 1),
-               amount: lineAmount
-             });
-             
-             inventoryUpdates.push({
-                 item: item,
-                 qtyToAdd: parseInt(dItem.quantity || 1),
-                 lineAmount: lineAmount
-             });
-         }
-      });
-      
-      if (purchaseForm.status === 'completed' && purchaseForm.fees && parseFloat(purchaseForm.fees) > 0) {
+        const item = inventory.find(i => i.id === dItem.itemId);
+        const lineAmount = parseFloat(dItem.price || 0) * parseInt(dItem.quantity || 1);
+
+        if (item) {
           transactionsToInsert.push({
-              date: purchaseForm.date,
-              type: 'expense',
-              category: 'Frais Bancaires',
-              party: 'Banque',
-              amount: parseFloat(purchaseForm.fees),
-              status: 'completed',
-              bank_account_id: purchaseForm.bankAccountId,
-              notes: `Frais de paiement pour ${selectedSupplier} (Nouvel Achat Détaillé)`
+            ...commonFields,
+            item_id: dItem.itemId,
+            item_name: item.name,
+            quantity: parseInt(dItem.quantity || 1),
+            amount: lineAmount
           });
+
+          inventoryUpdates.push({
+            item: item,
+            qtyToAdd: parseInt(dItem.quantity || 1),
+            lineAmount: lineAmount
+          });
+        }
+      });
+
+      if (purchaseForm.status === 'completed' && purchaseForm.fees && parseFloat(purchaseForm.fees) > 0) {
+        transactionsToInsert.push({
+          date: purchaseForm.date,
+          type: 'expense',
+          category: 'Frais Bancaires',
+          party: 'Banque',
+          amount: parseFloat(purchaseForm.fees),
+          status: 'completed',
+          bank_account_id: purchaseForm.bankAccountId,
+          notes: `Frais de paiement pour ${selectedSupplier} (Nouvel Achat Détaillé)`
+        });
       }
     } else {
-        const item = inventory.find(i => i.id === purchaseForm.itemId);
-        const dbTransaction = {
-          ...commonFields,
-          item_id: purchaseForm.itemId,
-          item_name: item ? item.name : '',
-          quantity: purchaseForm.quantity,
-          amount: purchaseForm.amount
-        };
-        transactionsToInsert.push(dbTransaction);
-        
-        if (item) {
-            inventoryUpdates.push({
-                item: item,
-                qtyToAdd: parseInt(purchaseForm.quantity || 0),
-                lineAmount: parseFloat(purchaseForm.amount || 0)
-            });
-        }
-        
-        if (purchaseForm.status === 'completed' && purchaseForm.fees && parseFloat(purchaseForm.fees) > 0) {
-            transactionsToInsert.push({
-                date: purchaseForm.date,
-                type: 'expense',
-                category: 'Frais Bancaires',
-                party: 'Banque',
-                amount: parseFloat(purchaseForm.fees),
-                status: 'completed',
-                bank_account_id: purchaseForm.bankAccountId,
-                notes: `Frais de paiement pour ${selectedSupplier} (Nouvel Achat)`
-            });
-        }
+      const item = inventory.find(i => i.id === purchaseForm.itemId);
+      const dbTransaction = {
+        ...commonFields,
+        item_id: purchaseForm.itemId,
+        item_name: item ? item.name : '',
+        quantity: purchaseForm.quantity,
+        amount: purchaseForm.amount
+      };
+      transactionsToInsert.push(dbTransaction);
+
+      if (item) {
+        inventoryUpdates.push({
+          item: item,
+          qtyToAdd: parseInt(purchaseForm.quantity || 0),
+          lineAmount: parseFloat(purchaseForm.amount || 0)
+        });
+      }
+
+      if (purchaseForm.status === 'completed' && purchaseForm.fees && parseFloat(purchaseForm.fees) > 0) {
+        transactionsToInsert.push({
+          date: purchaseForm.date,
+          type: 'expense',
+          category: 'Frais Bancaires',
+          party: 'Banque',
+          amount: parseFloat(purchaseForm.fees),
+          status: 'completed',
+          bank_account_id: purchaseForm.bankAccountId,
+          notes: `Frais de paiement pour ${selectedSupplier} (Nouvel Achat)`
+        });
+      }
     }
 
     const { data, error } = await supabase.from('transactions').insert(transactionsToInsert).select();
     if (data) {
       setTransactions(prev => [...data, ...prev]);
-      
+
       // Update inventory (WAC logic)
       for (const update of inventoryUpdates) {
-          const item = update.item;
-          const currentQty = parseInt(item.quantity || 0);
-          const newQty = update.qtyToAdd;
-          const currentBuyPrice = parseFloat(item.buy_price || 0);
-          
-          const totalValue = (currentQty * currentBuyPrice) + parseFloat(purchaseForm.amount);
-          const totalQty = currentQty + newQty;
-          const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
-          const currentInitial = parseInt(item.initial_quantity || item.quantity || 0);
-          const newInitial = currentInitial + newQty;
+        const item = update.item;
+        const currentQty = parseInt(item.quantity || 0);
+        const newQty = update.qtyToAdd;
+        const currentBuyPrice = parseFloat(item.buy_price || 0);
 
-          await supabase.from('inventory').update({ quantity: totalQty, buy_price: newBuyPrice, initial_quantity: newInitial }).eq('id', purchaseForm.itemId);
-          setInventory(prev => prev.map(i => i.id === purchaseForm.itemId ? { ...i, quantity: totalQty, buy_price: newBuyPrice, initial_quantity: newInitial } : i));
+        const totalValue = (currentQty * currentBuyPrice) + parseFloat(purchaseForm.amount);
+        const totalQty = currentQty + newQty;
+        const newBuyPrice = totalQty > 0 ? totalValue / totalQty : purchasePrice;
+        const currentInitial = parseInt(item.initial_quantity || item.quantity || 0);
+        const newInitial = currentInitial + newQty;
+
+        await supabase.from('inventory').update({ quantity: totalQty, buy_price: newBuyPrice, initial_quantity: newInitial }).eq('id', purchaseForm.itemId);
+        setInventory(prev => prev.map(i => i.id === purchaseForm.itemId ? { ...i, quantity: totalQty, buy_price: newBuyPrice, initial_quantity: newInitial } : i));
       }
-      
+
       setShowPurchaseModal(false);
       setPurchaseForm({ date: new Date().toISOString().split('T')[0], itemId: '', quantity: '', amount: '', status: 'pending', bankAccountId: '', fees: '' });
     } else if (error) {
-        alert(error.message);
+      alert(error.message);
     }
   };
 
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
     if (!selectedSupplier || !paymentForm.amount || !paymentForm.bankAccountId) {
-        alert("Veuillez remplir tous les champs");
-        return;
+      alert("Veuillez remplir tous les champs");
+      return;
     }
 
     const transactionsToInsert = [];
@@ -4125,7 +4125,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
           </div>
           <p className="text-3xl font-bold text-gray-900">{formatCurrency(totalDebts)}</p>
         </div>
-        
+
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
@@ -4171,7 +4171,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
             />
           </div>
         </div>
-        
+
         <div className="flex items-center space-x-2 overflow-x-auto w-full xl:w-auto pb-2 xl:pb-0">
           <button onClick={() => setShowAddForm(!showAddForm)} className="flex items-center space-x-2 px-3 py-2 text-gray-700 bg-white hover:bg-gray-50 border rounded-lg text-sm font-medium whitespace-nowrap">
             <UserPlus size={16} /><span>+ Fournisseur</span>
@@ -4222,21 +4222,21 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
             </>
           )}
           <div className="flex space-x-2">
+            <button
+              onClick={handleAddSupplier}
+              disabled={!newSupplier.name}
+              className="bg-blue-600 text-white px-8 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+            >
+              {editingId ? 'Modifier' : t('add')}
+            </button>
+            {editingId && (
               <button
-                onClick={handleAddSupplier}
-                disabled={!newSupplier.name}
-                className="bg-blue-600 text-white px-8 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+                onClick={() => { setShowAddForm(false); setEditingId(null); setNewSupplier({ name: '', contact: '' }); }}
+                className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-200 whitespace-nowrap"
               >
-                {editingId ? 'Modifier' : t('add')}
+                Annuler
               </button>
-              {editingId && (
-                  <button
-                    onClick={() => { setShowAddForm(false); setEditingId(null); setNewSupplier({ name: '', contact: '' }); }}
-                    className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-200 whitespace-nowrap"
-                  >
-                    Annuler
-                  </button>
-              )}
+            )}
           </div>
         </div>
       )}
@@ -4295,7 +4295,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                           <span className="mr-1.5 w-1.5 h-1.5 bg-red-600 rounded-full inline-block"></span> NON PAYÉ
                         </span>
                       ) : stats.totalPurchases > 0 ? (
-                         <span className="px-3 py-1 inline-flex items-center text-xs leading-5 font-semibold rounded-full bg-green-50 text-green-600 border border-green-200">
+                        <span className="px-3 py-1 inline-flex items-center text-xs leading-5 font-semibold rounded-full bg-green-50 text-green-600 border border-green-200">
                           <span className="mr-1.5 w-1.5 h-1.5 bg-green-600 rounded-full inline-block"></span> PAYÉ
                         </span>
                       ) : (
@@ -4322,7 +4322,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
       </div>
 
       {/* MODALS */}
-      
+
       {/* 1. New Purchase Modal */}
       {showPurchaseModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -4330,22 +4330,22 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
             <button type="button" onClick={() => setShowPurchaseModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={24} /></button>
             <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">Nouvel Achat <ShoppingCart size={24} className="text-orange-500" /></h3>
             <form onSubmit={handlePurchaseSubmit} className="space-y-6">
-              
+
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">SÉLECTIONNER FOURNISSEUR</label>
                 <select required className="w-full bg-white border border-gray-300 rounded-lg p-3 text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none" value={selectedSupplier} onChange={(e) => setSelectedSupplier(e.target.value)}>
-                    <option value="">Sélectionner fournisseur...</option>
-                    {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                  <option value="">Sélectionner fournisseur...</option>
+                  {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                 </select>
               </div>
 
               <div className="flex items-center gap-6 p-4 rounded-xl border border-gray-200 bg-gray-50">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" className="form-radio text-orange-500 focus:ring-orange-500 bg-white border-gray-300" checked={purchaseForm.mode === 'direct'} onChange={() => setPurchaseForm({...purchaseForm, mode: 'direct'})} />
+                  <input type="radio" className="form-radio text-orange-500 focus:ring-orange-500 bg-white border-gray-300" checked={purchaseForm.mode === 'direct'} onChange={() => setPurchaseForm({ ...purchaseForm, mode: 'direct' })} />
                   <span className="text-gray-900 font-medium">Total Direct</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" className="form-radio text-purple-600 focus:ring-purple-600 bg-white border-gray-300" checked={purchaseForm.mode === 'detailed'} onChange={() => setPurchaseForm({...purchaseForm, mode: 'detailed'})} />
+                  <input type="radio" className="form-radio text-purple-600 focus:ring-purple-600 bg-white border-gray-300" checked={purchaseForm.mode === 'detailed'} onChange={() => setPurchaseForm({ ...purchaseForm, mode: 'detailed' })} />
                   <span className="text-gray-900 font-medium">Détaillé</span>
                 </label>
               </div>
@@ -4354,20 +4354,20 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Produit</label>
-                    <select required className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.itemId} onChange={(e) => setPurchaseForm({...purchaseForm, itemId: e.target.value})}>
-                        <option value="">Sélectionner un produit</option>
-                        {inventory.map(i => <option key={i.id} value={i.id}>{i.name} (Stock: {i.quantity})</option>)}
+                    <select required className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.itemId} onChange={(e) => setPurchaseForm({ ...purchaseForm, itemId: e.target.value })}>
+                      <option value="">Sélectionner un produit</option>
+                      {inventory.map(i => <option key={i.id} value={i.id}>{i.name} (Stock: {i.quantity})</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantité</label>
-                        <input required type="number" min="1" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({...purchaseForm, quantity: e.target.value})} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Total Montant (MAD)</label>
-                        <input required type="number" step="0.01" min="0" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.amount} onChange={(e) => setPurchaseForm({...purchaseForm, amount: e.target.value})} />
-                      </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantité</label>
+                      <input required type="number" min="1" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({ ...purchaseForm, quantity: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Total Montant (MAD)</label>
+                      <input required type="number" step="0.01" min="0" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900" value={purchaseForm.amount} onChange={(e) => setPurchaseForm({ ...purchaseForm, amount: e.target.value })} />
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -4378,36 +4378,36 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                         <select required className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm text-gray-900" value={dItem.itemId} onChange={(e) => {
                           const newItems = [...purchaseForm.detailedItems];
                           newItems[index].itemId = e.target.value;
-                          setPurchaseForm({...purchaseForm, detailedItems: newItems});
+                          setPurchaseForm({ ...purchaseForm, detailedItems: newItems });
                         }}>
-                            <option value="">Produit...</option>
-                            {inventory.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                          <option value="">Produit...</option>
+                          {inventory.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                         </select>
                       </div>
                       <div className="w-20">
                         <input required type="number" min="1" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm text-gray-900 text-center" value={dItem.quantity} onChange={(e) => {
                           const newItems = [...purchaseForm.detailedItems];
                           newItems[index].quantity = e.target.value;
-                          setPurchaseForm({...purchaseForm, detailedItems: newItems});
+                          setPurchaseForm({ ...purchaseForm, detailedItems: newItems });
                         }} />
                       </div>
                       <div className="w-28">
                         <input required type="number" step="0.01" min="0" placeholder="Prix" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm text-gray-900" value={dItem.price} onChange={(e) => {
                           const newItems = [...purchaseForm.detailedItems];
                           newItems[index].price = e.target.value;
-                          setPurchaseForm({...purchaseForm, detailedItems: newItems});
+                          setPurchaseForm({ ...purchaseForm, detailedItems: newItems });
                         }} />
                       </div>
                       <button type="button" onClick={() => {
                         if (purchaseForm.detailedItems.length > 1) {
-                          setPurchaseForm({...purchaseForm, detailedItems: purchaseForm.detailedItems.filter(i => i.id !== dItem.id)});
+                          setPurchaseForm({ ...purchaseForm, detailedItems: purchaseForm.detailedItems.filter(i => i.id !== dItem.id) });
                         }
                       }} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"><X size={18} /></button>
                     </div>
                   ))}
-                  
+
                   <button type="button" onClick={() => {
-                    setPurchaseForm({...purchaseForm, detailedItems: [...purchaseForm.detailedItems, { id: generateId(), itemId: '', quantity: '1', price: '' }]});
+                    setPurchaseForm({ ...purchaseForm, detailedItems: [...purchaseForm.detailedItems, { id: generateId(), itemId: '', quantity: '1', price: '' }] });
                   }} className="w-full py-2 border border-purple-300 border-dashed rounded-lg text-purple-600 text-sm font-medium hover:bg-purple-50 transition-colors">
                     + Ajouter une ligne
                   </button>
@@ -4425,7 +4425,7 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DÉSIGNATION / PRODUITS</label>
-                    <input type="text" placeholder="Ex: pc, ecran (Entrée...)" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.category} onChange={(e) => setPurchaseForm({...purchaseForm, category: e.target.value})} />
+                    <input type="text" placeholder="Ex: pc, ecran (Entrée...)" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.category} onChange={(e) => setPurchaseForm({ ...purchaseForm, category: e.target.value })} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">MONTANT TOTALE</label>
@@ -4452,48 +4452,48 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DATE OPÉRATION</label>
-                  <input required type="date" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.date} onChange={(e) => setPurchaseForm({...purchaseForm, date: e.target.value})} />
+                  <input required type="date" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.date} onChange={(e) => setPurchaseForm({ ...purchaseForm, date: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">CATÉGORIE</label>
-                  <select className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.category} onChange={(e) => setPurchaseForm({...purchaseForm, category: e.target.value})}>
-                      <option value="">-- Sélectionnez --</option>
-                      {uniqueCategories.map((c, i) => <option key={i} value={c}>{c}</option>)}
+                  <select className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.category} onChange={(e) => setPurchaseForm({ ...purchaseForm, category: e.target.value })}>
+                    <option value="">-- Sélectionnez --</option>
+                    {uniqueCategories.map((c, i) => <option key={i} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">RÉF. BON / FACTURE</label>
-                  <input type="text" placeholder="N° Bon..." className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.reference} onChange={(e) => setPurchaseForm({...purchaseForm, reference: e.target.value})} />
+                  <input type="text" placeholder="N° Bon..." className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.reference} onChange={(e) => setPurchaseForm({ ...purchaseForm, reference: e.target.value })} />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">OBSERVATIONS / NOTES <Edit size={14} className="text-gray-400" /></label>
-                <textarea rows="2" placeholder="Notes additionnelles..." className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.notes} onChange={(e) => setPurchaseForm({...purchaseForm, notes: e.target.value})} />
+                <textarea rows="2" placeholder="Notes additionnelles..." className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" value={purchaseForm.notes} onChange={(e) => setPurchaseForm({ ...purchaseForm, notes: e.target.value })} />
               </div>
 
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">STATUT DU PAIEMENT</label>
-                  <select className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.status} onChange={(e) => setPurchaseForm({...purchaseForm, status: e.target.value})}>
-                      <option value="pending">NON PAYÉ (Crédit)</option>
-                      <option value="completed">PAYÉ (Immédiat)</option>
+                  <select className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.status} onChange={(e) => setPurchaseForm({ ...purchaseForm, status: e.target.value })}>
+                    <option value="pending">NON PAYÉ (Crédit)</option>
+                    <option value="completed">PAYÉ (Immédiat)</option>
                   </select>
                 </div>
                 {purchaseForm.status === 'completed' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Compte Bancaire / Caisse</label>
-                        <select required className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.bankAccountId} onChange={(e) => setPurchaseForm({...purchaseForm, bankAccountId: e.target.value})}>
-                            <option value="">Sélectionner un compte</option>
-                            {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Frais Bancaires (MAD)</label>
-                        <input type="number" step="0.01" min="0" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.fees} onChange={(e) => setPurchaseForm({...purchaseForm, fees: e.target.value})} placeholder="Optionnel" />
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Compte Bancaire / Caisse</label>
+                      <select required className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.bankAccountId} onChange={(e) => setPurchaseForm({ ...purchaseForm, bankAccountId: e.target.value })}>
+                        <option value="">Sélectionner un compte</option>
+                        {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
                     </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Frais Bancaires (MAD)</label>
+                      <input type="number" step="0.01" min="0" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:border-orange-500 focus:ring-0" value={purchaseForm.fees} onChange={(e) => setPurchaseForm({ ...purchaseForm, fees: e.target.value })} placeholder="Optionnel" />
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -4504,8 +4504,8 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
               )}
 
               <div className="pt-6 flex justify-end gap-3 border-t border-gray-200">
-                  <button type="button" onClick={() => setShowPurchaseModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Annuler</button>
-                  <button type="submit" className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium shadow-sm transition-colors">Valider l'Achat</button>
+                <button type="button" onClick={() => setShowPurchaseModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Annuler</button>
+                <button type="submit" className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium shadow-sm transition-colors">Valider l'Achat</button>
               </div>
             </form>
           </div>
@@ -4522,33 +4522,33 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur</label>
                 <select required className="w-full border-gray-300 rounded-lg p-2 border" value={selectedSupplier} onChange={(e) => setSelectedSupplier(e.target.value)}>
-                    <option value="">Sélectionner un fournisseur</option>
-                    {suppliers.map(s => <option key={s.id} value={s.name}>{s.name} (Dette: {getSupplierStats(s.name).balance} MAD)</option>)}
+                  <option value="">Sélectionner un fournisseur</option>
+                  {suppliers.map(s => <option key={s.id} value={s.name}>{s.name} (Dette: {getSupplierStats(s.name).balance} MAD)</option>)}
                 </select>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Montant à Payer (MAD)</label>
-                  <input required type="number" step="0.01" min="0.01" className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.amount} onChange={(e) => setPaymentForm({...paymentForm, amount: e.target.value})} />
+                  <input required type="number" step="0.01" min="0.01" className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Frais Bancaires (MAD)</label>
-                  <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.fees} onChange={(e) => setPaymentForm({...paymentForm, fees: e.target.value})} placeholder="Optionnel" />
+                  <input type="number" step="0.01" min="0" className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.fees} onChange={(e) => setPaymentForm({ ...paymentForm, fees: e.target.value })} placeholder="Optionnel" />
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Compte Bancaire / Caisse (Source)</label>
-                <select required className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.bankAccountId} onChange={(e) => setPaymentForm({...paymentForm, bankAccountId: e.target.value})}>
-                    <option value="">Sélectionner un compte</option>
-                    {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                <select required className="w-full border-gray-300 rounded-lg p-2 border" value={paymentForm.bankAccountId} onChange={(e) => setPaymentForm({ ...paymentForm, bankAccountId: e.target.value })}>
+                  <option value="">Sélectionner un compte</option>
+                  {bankAccounts && bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
 
               <div className="pt-4 flex justify-end gap-3">
-                  <button type="button" onClick={() => setShowPaymentModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
-                  <button type="submit" className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium shadow-sm">Valider le Paiement</button>
+                <button type="button" onClick={() => setShowPaymentModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
+                <button type="submit" className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium shadow-sm">Valider le Paiement</button>
               </div>
             </form>
           </div>
@@ -4561,124 +4561,124 @@ const SupplierManager = ({ suppliers, setSuppliers, transactions, setTransaction
           <div className="bg-white rounded-2xl p-6 max-w-6xl w-full shadow-2xl relative max-h-[90vh] flex flex-col my-8 border border-gray-200">
             <button onClick={() => setShowHistoryModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
             <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">Relevé : {selectedSupplier.toUpperCase()}</h3>
-            
+
             {/* Filters */}
             <div className="flex flex-wrap items-end gap-4 mb-6 p-4 border border-gray-200 rounded-xl bg-gray-50">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DATE DÉBUT</label>
-                  <input type="date" className="bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:ring-1 focus:ring-gray-300" value={releveStartDate} onChange={e => setReleveStartDate(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DATE FIN</label>
-                  <input type="date" className="bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:ring-1 focus:ring-gray-300" value={releveEndDate} onChange={e => setReleveEndDate(e.target.value)} />
-                </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-medium hover:bg-indigo-100 transition-colors border border-indigo-100">
-                    <Filter size={16} /> Filtrer
-                </button>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DATE DÉBUT</label>
+                <input type="date" className="bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:ring-1 focus:ring-gray-300" value={releveStartDate} onChange={e => setReleveStartDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">DATE FIN</label>
+                <input type="date" className="bg-white border border-gray-300 rounded-lg p-2 text-gray-900 text-sm focus:ring-1 focus:ring-gray-300" value={releveEndDate} onChange={e => setReleveEndDate(e.target.value)} />
+              </div>
+              <button className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-medium hover:bg-indigo-100 transition-colors border border-indigo-100">
+                <Filter size={16} /> Filtrer
+              </button>
             </div>
 
             {/* Selection actions */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6 p-4 border border-indigo-200 rounded-xl bg-indigo-50/50">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => {
-                        const allIds = getGroupedReleveTransactions().map(t => t.id);
-                        setReleveSelectedIds(releveSelectedIds.length === allIds.length ? [] : allIds);
-                    }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Tout Sélectionner</button>
-                    <button onClick={() => {
-                        const achatIds = getGroupedReleveTransactions().filter(t => t.type === 'purchase').map(t => t.id);
-                        setReleveSelectedIds(achatIds);
-                    }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Sélectionner Achats</button>
-                    <button onClick={() => {
-                        const paiementIds = getGroupedReleveTransactions().filter(t => t.type === 'expense').map(t => t.id);
-                        setReleveSelectedIds(paiementIds);
-                    }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Sélectionner Paiements</button>
-                </div>
-                <div className="flex items-center gap-4">
-                    <span className="text-gray-600 font-medium text-sm border-r border-gray-300 pr-4">{releveSelectedIds.length} transaction(s) sélectionnée(s)</span>
-                    <button onClick={handleExportSelectionCSV} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 shadow-sm transition-colors">
-                        <Download size={16} /> Exporter la Sélection
-                    </button>
-                    <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 shadow-sm transition-colors">
-                        <Printer size={16} /> Imprimer (PDF)
-                    </button>
-                </div>
+              <div className="flex items-center gap-4">
+                <button onClick={() => {
+                  const allIds = getGroupedReleveTransactions().map(t => t.id);
+                  setReleveSelectedIds(releveSelectedIds.length === allIds.length ? [] : allIds);
+                }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Tout Sélectionner</button>
+                <button onClick={() => {
+                  const achatIds = getGroupedReleveTransactions().filter(t => t.type === 'purchase').map(t => t.id);
+                  setReleveSelectedIds(achatIds);
+                }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Sélectionner Achats</button>
+                <button onClick={() => {
+                  const paiementIds = getGroupedReleveTransactions().filter(t => t.type === 'expense').map(t => t.id);
+                  setReleveSelectedIds(paiementIds);
+                }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm">Sélectionner Paiements</button>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-gray-600 font-medium text-sm border-r border-gray-300 pr-4">{releveSelectedIds.length} transaction(s) sélectionnée(s)</span>
+                <button onClick={handleExportSelectionCSV} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 shadow-sm transition-colors">
+                  <Download size={16} /> Exporter la Sélection
+                </button>
+                <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 shadow-sm transition-colors">
+                  <Printer size={16} /> Imprimer (PDF)
+                </button>
+              </div>
             </div>
 
             {/* Two columns layout */}
             <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4">
-                {/* Achats Column */}
-                <div className="space-y-4">
-                    <h4 className="text-lg font-bold text-gray-800 bg-gray-50 p-3 rounded-lg border border-gray-200">Achats</h4>
-                    {getGroupedReleveTransactions().filter(t => t.type === 'purchase').map(t => (
-                        <div key={t.id} className={`relative p-4 rounded-xl border-l-4 border-l-orange-500 bg-white border border-gray-200 shadow-sm transition-colors ${releveSelectedIds.includes(t.id) ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : ''}`}>
-                            <div className="absolute top-4 left-4">
-                                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 bg-white text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0" checked={releveSelectedIds.includes(t.id)} onChange={(e) => {
-                                    if (e.target.checked) setReleveSelectedIds([...releveSelectedIds, t.id]);
-                                    else setReleveSelectedIds(releveSelectedIds.filter(id => id !== t.id));
-                                }} />
-                            </div>
-                            <div className="ml-8 flex justify-between items-start">
-                                <div>
-                                    <h5 className="text-gray-900 font-bold text-lg leading-tight">{t.isGroup ? 'Achat Détaillé' : 'Achat'}</h5>
-                                    <span className="text-gray-500 text-sm">{new Date(t.date).toLocaleDateString('fr-FR')}</span>
-                                </div>
-                                <div className="flex flex-col items-end gap-2">
-                                    <span className="px-3 py-1 bg-orange-100 text-orange-700 border border-orange-200 rounded-full text-xs font-bold tracking-wider">ACHAT</span>
-                                    <div className="flex gap-2 text-gray-400">
-                                        <button className="hover:text-gray-700 p-1"><Printer size={16} /></button>
-                                        <button className="hover:text-indigo-600 p-1"><Edit size={16} /></button>
-                                        <button className="hover:text-red-500 p-1"><Trash2 size={16} /></button>
-                                    </div>
-                                    <span className="text-orange-600 font-bold text-xl font-mono mt-1">-{t.totalAmount.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} MAD</span>
-                                </div>
-                            </div>
-                            <div className="ml-8 mt-4 space-y-2 text-sm border-t border-gray-100 pt-3">
-                                <div className="text-gray-600"><span className="text-gray-400 mr-2">🏷️</span><strong className="text-gray-800 font-medium">Catégorie:</strong> {t.category}</div>
-                                <div className="text-gray-600"><span className="text-gray-400 mr-2">✍️</span><strong className="text-gray-800 font-medium">Observations / Notes:</strong> {t.notes || 'Aucune observation'}</div>
-                                {t.isGroup ? (
-                                    <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong> 
-                                        [Items: {t.items.map(item => `${item.quantity}x ${item.name} (Prix unitaire : ${(item.amount/item.quantity).toLocaleString('fr-FR', {minimumFractionDigits: 2})} MAD)`).join(' | ')} | Total Global : {t.totalAmount.toLocaleString('fr-FR', {minimumFractionDigits: 2})} MAD]
-                                    </div>
-                                ) : (
-                                    <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong> [Produit: {t.item_name} | Qté: {t.quantity}]</div>
-                                )}
-                            </div>
+              {/* Achats Column */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-bold text-gray-800 bg-gray-50 p-3 rounded-lg border border-gray-200">Achats</h4>
+                {getGroupedReleveTransactions().filter(t => t.type === 'purchase').map(t => (
+                  <div key={t.id} className={`relative p-4 rounded-xl border-l-4 border-l-orange-500 bg-white border border-gray-200 shadow-sm transition-colors ${releveSelectedIds.includes(t.id) ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : ''}`}>
+                    <div className="absolute top-4 left-4">
+                      <input type="checkbox" className="w-4 h-4 rounded border-gray-300 bg-white text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0" checked={releveSelectedIds.includes(t.id)} onChange={(e) => {
+                        if (e.target.checked) setReleveSelectedIds([...releveSelectedIds, t.id]);
+                        else setReleveSelectedIds(releveSelectedIds.filter(id => id !== t.id));
+                      }} />
+                    </div>
+                    <div className="ml-8 flex justify-between items-start">
+                      <div>
+                        <h5 className="text-gray-900 font-bold text-lg leading-tight">{t.isGroup ? 'Achat Détaillé' : 'Achat'}</h5>
+                        <span className="text-gray-500 text-sm">{new Date(t.date).toLocaleDateString('fr-FR')}</span>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className="px-3 py-1 bg-orange-100 text-orange-700 border border-orange-200 rounded-full text-xs font-bold tracking-wider">ACHAT</span>
+                        <div className="flex gap-2 text-gray-400">
+                          <button className="hover:text-gray-700 p-1"><Printer size={16} /></button>
+                          <button className="hover:text-indigo-600 p-1"><Edit size={16} /></button>
+                          <button className="hover:text-red-500 p-1"><Trash2 size={16} /></button>
                         </div>
-                    ))}
-                </div>
+                        <span className="text-orange-600 font-bold text-xl font-mono mt-1">-{t.totalAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD</span>
+                      </div>
+                    </div>
+                    <div className="ml-8 mt-4 space-y-2 text-sm border-t border-gray-100 pt-3">
+                      <div className="text-gray-600"><span className="text-gray-400 mr-2">🏷️</span><strong className="text-gray-800 font-medium">Catégorie:</strong> {t.category}</div>
+                      <div className="text-gray-600"><span className="text-gray-400 mr-2">✍️</span><strong className="text-gray-800 font-medium">Observations / Notes:</strong> {t.notes || 'Aucune observation'}</div>
+                      {t.isGroup ? (
+                        <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong>
+                          [Items: {t.items.map(item => `${item.quantity}x ${item.name} (Prix unitaire : ${(item.amount / item.quantity).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD)`).join(' | ')} | Total Global : {t.totalAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD]
+                        </div>
+                      ) : (
+                        <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong> [Produit: {t.item_name} | Qté: {t.quantity}]</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-                {/* Paiements Column */}
-                <div className="space-y-4">
-                    <h4 className="text-lg font-bold text-gray-800 bg-gray-50 p-3 rounded-lg border border-gray-200">Paiements</h4>
-                    {getGroupedReleveTransactions().filter(t => t.type === 'expense').map(t => (
-                        <div key={t.id} className={`relative p-4 rounded-xl border-l-4 border-l-purple-500 bg-white border border-gray-200 shadow-sm transition-colors ${releveSelectedIds.includes(t.id) ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : ''}`}>
-                            <div className="absolute top-4 left-4">
-                                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 bg-white text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0" checked={releveSelectedIds.includes(t.id)} onChange={(e) => {
-                                    if (e.target.checked) setReleveSelectedIds([...releveSelectedIds, t.id]);
-                                    else setReleveSelectedIds(releveSelectedIds.filter(id => id !== t.id));
-                                }} />
-                            </div>
-                            <div className="ml-8 flex justify-between items-start">
-                                <div>
-                                    <h5 className="text-gray-900 font-bold text-lg leading-tight">Installment / Acompte</h5>
-                                    <span className="text-gray-500 text-sm">{new Date(t.date).toLocaleDateString('fr-FR')}</span>
-                                </div>
-                                <div className="flex flex-col items-end gap-2">
-                                    <span className="px-3 py-1 bg-purple-100 text-purple-700 border border-purple-200 rounded-full text-xs font-bold tracking-wider">CONFIRMÉ</span>
-                                    <div className="flex gap-2 text-gray-400">
-                                        <button className="hover:text-indigo-600 p-1"><Edit size={16} /></button>
-                                        <button className="hover:text-red-500 p-1"><Trash2 size={16} /></button>
-                                    </div>
-                                    <span className="text-purple-600 font-bold text-xl font-mono mt-1">+{t.totalAmount.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} MAD</span>
-                                </div>
-                            </div>
-                            <div className="ml-8 mt-4 space-y-2 text-sm border-t border-gray-100 pt-3">
-                                <div className="text-gray-600"><span className="text-gray-400 mr-2">✍️</span><strong className="text-gray-800 font-medium">Observations / Notes:</strong> {t.notes || 'Aucune observation'}</div>
-                                <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong> ---</div>
-                            </div>
+              {/* Paiements Column */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-bold text-gray-800 bg-gray-50 p-3 rounded-lg border border-gray-200">Paiements</h4>
+                {getGroupedReleveTransactions().filter(t => t.type === 'expense').map(t => (
+                  <div key={t.id} className={`relative p-4 rounded-xl border-l-4 border-l-purple-500 bg-white border border-gray-200 shadow-sm transition-colors ${releveSelectedIds.includes(t.id) ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : ''}`}>
+                    <div className="absolute top-4 left-4">
+                      <input type="checkbox" className="w-4 h-4 rounded border-gray-300 bg-white text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0" checked={releveSelectedIds.includes(t.id)} onChange={(e) => {
+                        if (e.target.checked) setReleveSelectedIds([...releveSelectedIds, t.id]);
+                        else setReleveSelectedIds(releveSelectedIds.filter(id => id !== t.id));
+                      }} />
+                    </div>
+                    <div className="ml-8 flex justify-between items-start">
+                      <div>
+                        <h5 className="text-gray-900 font-bold text-lg leading-tight">Installment / Acompte</h5>
+                        <span className="text-gray-500 text-sm">{new Date(t.date).toLocaleDateString('fr-FR')}</span>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className="px-3 py-1 bg-purple-100 text-purple-700 border border-purple-200 rounded-full text-xs font-bold tracking-wider">CONFIRMÉ</span>
+                        <div className="flex gap-2 text-gray-400">
+                          <button className="hover:text-indigo-600 p-1"><Edit size={16} /></button>
+                          <button className="hover:text-red-500 p-1"><Trash2 size={16} /></button>
                         </div>
-                    ))}
-                </div>
+                        <span className="text-purple-600 font-bold text-xl font-mono mt-1">+{t.totalAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD</span>
+                      </div>
+                    </div>
+                    <div className="ml-8 mt-4 space-y-2 text-sm border-t border-gray-100 pt-3">
+                      <div className="text-gray-600"><span className="text-gray-400 mr-2">✍️</span><strong className="text-gray-800 font-medium">Observations / Notes:</strong> {t.notes || 'Aucune observation'}</div>
+                      <div className="text-gray-600 bg-gray-50 p-2 rounded border border-gray-100"><span className="text-indigo-400 mr-2">🤖</span><strong className="font-medium text-gray-700">Détails Système (Auto):</strong> ---</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -4988,57 +4988,48 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
 
     transactions.forEach(tx => {
       if (tx.status !== 'completed') return;
-      
+
       // Regular transactions mapped to this account
       if (tx.bank_account_id === accountId) {
         if (tx.type === 'sale') balance += parseFloat(tx.amount || 0);
         else if (tx.type === 'purchase' || tx.type === 'expense') balance -= parseFloat(tx.amount || 0);
         else if (tx.type === 'transfer_out') balance -= parseFloat(tx.amount || 0);
       }
-      
+
       // Transfers receiving into this account
       if (tx.to_bank_account_id === accountId && tx.type === 'transfer') {
-         balance += parseFloat(tx.amount || 0);
+        balance += parseFloat(tx.amount || 0);
       }
       // Outgoing transfers
       if (tx.bank_account_id === accountId && tx.type === 'transfer') {
-         balance -= parseFloat(tx.amount || 0);
+        balance -= parseFloat(tx.amount || 0);
       }
     });
-
-    if (digitalTransactions) {
-      digitalTransactions.forEach(tx => {
-        if (tx.bank_account_id === accountId) {
-          if (tx.type === 'sale') balance += parseFloat(tx.amount || 0);
-          else if (tx.type === 'purchase' || tx.type === 'expense') balance -= parseFloat(tx.amount || 0);
-        }
-      });
-    }
 
     return balance;
   };
 
   const soldeGlobal = bankAccounts.reduce((sum, acc) => sum + getAccountBalance(acc.id), 0);
-  
+
   const totalEntrees = transactions
     .filter(t => t.status === 'completed' && (t.type === 'sale' || t.type === 'transfer'))
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0); // Wait, transfer shouldn't count as global Entrée if it's internal. Let's just count sales.
-    
+
   const digitalTotalEntrees = digitalTransactions
-    ? digitalTransactions.filter(t => t.type === 'sale' && t.bank_account_id).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
+    ? digitalTransactions.filter(t => t.status === 'completed' && t.type === 'sale' && t.bank_account_id).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
     : 0;
-    
+
   const digitalTotalSorties = digitalTransactions
-    ? digitalTransactions.filter(t => (t.type === 'purchase' || t.type === 'expense') && t.bank_account_id).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
+    ? digitalTransactions.filter(t => t.status === 'completed' && (t.type === 'purchase' || t.type === 'expense') && t.bank_account_id).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
     : 0;
 
   const trueTotalEntrees = transactions
     .filter(t => t.status === 'completed' && t.type === 'sale' && t.bank_account_id)
-    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) + digitalTotalEntrees;
-    
+    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+
   const trueTotalSorties = transactions
     .filter(t => t.status === 'completed' && (t.type === 'purchase' || t.type === 'expense') && t.bank_account_id)
-    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) + digitalTotalSorties;
+    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
   const handleAddAccount = async (e) => {
     e.preventDefault();
@@ -5047,7 +5038,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
       type: formData.type,
       initial_balance: parseFloat(formData.initialBalance || 0)
     };
-    
+
     // Check if supabase exists
     const { data, error } = await supabase.from('bank_accounts').insert([newAccount]).select();
     if (error) {
@@ -5105,7 +5096,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
           </div>
           <p className="text-3xl font-bold text-gray-900">{formatCurrency(soldeGlobal)}</p>
         </div>
-        
+
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-green-50 text-green-600 rounded-lg">
@@ -5145,27 +5136,27 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-             {bankAccounts.map(account => (
-               <div key={account.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow relative group">
-                 <div className="flex justify-between items-start mb-2">
-                   <div className="flex items-center space-x-2">
-                     <Wallet className="text-blue-500" size={20}/>
-                     <h4 className="font-bold text-gray-800">{account.name}</h4>
-                   </div>
-                   <div className="flex items-center space-x-2">
-                     <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600 capitalize">{account.type}</span>
-                     <button 
-                       onClick={() => handleDeleteAccount(account.id)}
-                       className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 transition-opacity"
-                       title="Supprimer ce compte"
-                     >
-                       <Trash2 size={16} />
-                     </button>
-                   </div>
-                 </div>
-                 <p className="text-2xl font-bold text-gray-900 mt-4">{formatCurrency(getAccountBalance(account.id))}</p>
-               </div>
-             ))}
+            {bankAccounts.map(account => (
+              <div key={account.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow relative group">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center space-x-2">
+                    <Wallet className="text-blue-500" size={20} />
+                    <h4 className="font-bold text-gray-800">{account.name}</h4>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600 capitalize">{account.type}</span>
+                    <button
+                      onClick={() => handleDeleteAccount(account.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 transition-opacity"
+                      title="Supprimer ce compte"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-gray-900 mt-4">{formatCurrency(getAccountBalance(account.id))}</p>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -5182,7 +5173,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
             <Plus size={16} />
             <span>{t('adjustBalance')}</span>
           </button>
-          <button 
+          <button
             onClick={() => setShowForm(true)}
             className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap"
           >
@@ -5195,7 +5186,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
           </button>
         </div>
       </div>
-      
+
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
@@ -5233,7 +5224,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
                   onChange={e => setFormData({ ...formData, initialBalance: e.target.value })}
                 />
               </div>
-              
+
               <div className="flex justify-end space-x-3 mt-6">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Enregistrer</button>
@@ -5257,16 +5248,15 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {transactions.filter(t => t.bank_account_id || t.to_bank_account_id).slice(0, 10).map((tx) => {
+              {transactions.filter(t => t.status === 'completed' && (t.bank_account_id || t.to_bank_account_id)).slice(0, 10).map((tx) => {
                 const isIncoming = tx.type === 'sale' || tx.type === 'transfer_in';
                 const account = bankAccounts.find(b => b.id === tx.bank_account_id);
                 return (
                   <tr key={tx.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm text-gray-600">{tx.date}</td>
                     <td className="px-6 py-4 text-sm">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        isIncoming ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${isIncoming ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
                         {t(tx.type)}
                       </span>
                     </td>
@@ -5278,7 +5268,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
                   </tr>
                 );
               })}
-              {transactions.filter(t => t.bank_account_id || t.to_bank_account_id).length === 0 && (
+              {transactions.filter(t => t.status === 'completed' && (t.bank_account_id || t.to_bank_account_id)).length === 0 && (
                 <tr>
                   <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
                     Aucune transaction enregistrée.
