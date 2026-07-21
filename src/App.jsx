@@ -1513,6 +1513,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState(''); // New Status Filter
+  const [settledFilter, setSettledFilter] = useState(''); // Settled Filter
   const [partyFilter, setPartyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
   const [deliveryFilter, setDeliveryFilter] = useState('');
@@ -1554,6 +1555,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
         (!dateFilter.end || t.date <= dateFilter.end);
       const typeMatch = !typeFilter || t.type === typeFilter;
       const statusMatch = !statusFilter || t.status === statusFilter; // Apply Status Filter
+      const settledMatch = !settledFilter || 
+          (settledFilter === 'true' ? t.paid_out === true : 
+           settledFilter === 'false' ? t.paid_out !== true : true);
       const partyMatch = !partyFilter || (t.party && t.party.toLowerCase().includes(partyFilter.toLowerCase()));
 
       // Improved Item Matching using item_name
@@ -1564,7 +1568,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
       const deliveryMatch = !deliveryFilter || (t.delivery_company === deliveryFilter);
 
-      return dateMatch && typeMatch && statusMatch && partyMatch && itemMatch && deliveryMatch;
+      return dateMatch && typeMatch && statusMatch && settledMatch && partyMatch && itemMatch && deliveryMatch;
     });
 
     // Sorting Logic
@@ -1594,7 +1598,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     }
 
     setFilteredTransactions(result);
-  }, [transactions, dateFilter, typeFilter, statusFilter, partyFilter, itemFilter, deliveryFilter, sortConfig, inventory]);
+  }, [transactions, dateFilter, typeFilter, statusFilter, settledFilter, partyFilter, itemFilter, deliveryFilter, sortConfig, inventory]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -1953,6 +1957,16 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     }
   };
 
+  const handleSettledChange = async (transaction, newValue) => {
+    const { error } = await supabase.from('transactions').update({ paid_out: newValue }).eq('id', transaction.id);
+    if (error) {
+      console.error('Error updating settled status:', error);
+      alert('Error updating settled status: ' + error.message);
+      return;
+    }
+    setTransactions(prev => prev.map(t => t.id === transaction.id ? { ...t, paid_out: newValue } : t));
+  };
+
   const handleStatusChange = async (transaction, newStatus) => {
     const oldStatus = transaction.status;
     if (oldStatus === newStatus) return;
@@ -2064,6 +2078,16 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
 
             <select
               className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+              value={settledFilter}
+              onChange={e => setSettledFilter(e.target.value)}
+            >
+              <option value="">All Settled Status</option>
+              <option value="true">Settled</option>
+              <option value="false">Not Settled</option>
+            </select>
+
+            <select
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
               value={`${sortConfig.key}-${sortConfig.direction}`}
               onChange={e => {
                 const [key, direction] = e.target.value.split('-');
@@ -2106,12 +2130,13 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               ))}
             </select>
 
-            {(dateFilter.start || dateFilter.end || typeFilter || partyFilter || itemFilter || deliveryFilter) && (
+            {(dateFilter.start || dateFilter.end || typeFilter || statusFilter || settledFilter || partyFilter || itemFilter || deliveryFilter) && (
               <button
                 onClick={() => {
                   setDateFilter({ start: '', end: '' });
                   setTypeFilter('');
                   setStatusFilter('');
+                  setSettledFilter('');
                   setPartyFilter('');
                   setItemFilter('');
                   setDeliveryFilter('');
@@ -2567,6 +2592,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 >
                   {t('status')} {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                 </th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                  Settled
+                </th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('party')}
@@ -2631,6 +2659,20 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                       <option value="completed">{t('completed')}</option>
                       <option value="refused">{t('refused')}</option>
                     </select>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                    {tItem.type === 'sale' && tItem.status === 'completed' ? (
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4"
+                        checked={tItem.paid_out === true}
+                        onChange={(e) => handleSettledChange(tItem, e.target.checked)}
+                        onClick={(e) => e.stopPropagation()}
+                        title="Mark as paid out by delivery company"
+                      />
+                    ) : (
+                      <span className="text-gray-300">-</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{tItem.party || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tItem.address || '-'}</td>
