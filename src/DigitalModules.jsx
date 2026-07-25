@@ -1160,6 +1160,8 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
 
 export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supabase }) => {
   const [showForm, setShowForm] = useState(false);
+  const [showLiquidityForm, setShowLiquidityForm] = useState(false);
+  const [liquidityData, setLiquidityData] = useState({ accountId: '', amount: 0, description: 'Ajout de liquidité', action: 'add' });
   const [formData, setFormData] = useState({ name: '', type: 'bank', initialBalance: 0 });
   const [sortOption, setSortOption] = useState('date_desc');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -1179,8 +1181,8 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
     let balance = 0; 
     digitalTransactions.forEach(tx => {
       if (tx.bank_account_id === accountId) {
-        if (tx.type === 'sale') balance += parseFloat(tx.amount || 0);
-        else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'supplier_payment') balance -= parseFloat(tx.amount || 0);
+        if (tx.type === 'sale' || tx.type === 'liquidity_add') balance += parseFloat(tx.amount || 0);
+        else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'supplier_payment' || tx.type === 'liquidity_remove') balance -= parseFloat(tx.amount || 0);
       }
     });
     return balance;
@@ -1189,11 +1191,11 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
   const soldeGlobal = bankAccounts.reduce((sum, acc) => sum + getDigitalAccountBalance(acc.id), 0);
   
   const trueTotalEntrees = digitalTransactions
-    .filter(t => t.type === 'sale')
+    .filter(t => t.type === 'sale' || t.type === 'liquidity_add')
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
     
   const trueTotalSorties = digitalTransactions
-    .filter(t => t.bank_account_id && (t.type === 'purchase' || t.type === 'expense' || t.type === 'supplier_payment'))
+    .filter(t => t.bank_account_id && (t.type === 'purchase' || t.type === 'expense' || t.type === 'supplier_payment' || t.type === 'liquidity_remove'))
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
   const handleAddAccount = async (e) => {
@@ -1222,6 +1224,28 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
       } else {
         window.location.reload();
       }
+    }
+  };
+
+  const handleLiquiditySubmit = async (e) => {
+    e.preventDefault();
+    if (!liquidityData.accountId || !liquidityData.amount) return;
+    const isAdd = liquidityData.action === 'add';
+    const tx = {
+      date: new Date().toISOString().split('T')[0],
+      type: isAdd ? 'liquidity_add' : 'liquidity_remove',
+      item_name: liquidityData.description,
+      amount: parseFloat(liquidityData.amount),
+      status: 'completed',
+      bank_account_id: liquidityData.accountId
+    };
+    const { data, error } = await supabase.from('digital_transactions').insert([tx]).select();
+    if (error) {
+      alert("Erreur: " + error.message);
+    } else {
+      setShowLiquidityForm(false);
+      setLiquidityData({ accountId: '', amount: 0, description: 'Ajout de liquidité', action: 'add' });
+      window.location.reload();
     }
   };
 
@@ -1348,7 +1372,9 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
             <ArrowRightLeft size={16} />
             <span>Internal Transfer</span>
           </button>
-          <button className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
+          <button 
+            onClick={() => setShowLiquidityForm(true)}
+            className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
             <Plus size={16} />
             <span>Adjustment / Movement</span>
           </button>
@@ -1366,6 +1392,67 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
         </div>
       </div>
 
+      {showLiquidityForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+            <h4 className="text-lg font-bold mb-4 text-gray-800">Ajouter / Retirer Liquidité (Digital)</h4>
+            <form onSubmit={handleLiquiditySubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Action</label>
+                <select 
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={liquidityData.action}
+                  onChange={e => setLiquidityData({ ...liquidityData, action: e.target.value })}
+                >
+                  <option value="add">Ajouter (Entrée)</option>
+                  <option value="remove">Retirer (Sortie)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Compte</label>
+                <select 
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={liquidityData.accountId}
+                  onChange={e => setLiquidityData({ ...liquidityData, accountId: e.target.value })}
+                >
+                  <option value="">Sélectionner un compte</option>
+                  {bankAccounts.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Montant</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  min="0"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={liquidityData.amount}
+                  onChange={e => setLiquidityData({ ...liquidityData, amount: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Description</label>
+                <input
+                  type="text"
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={liquidityData.description}
+                  onChange={e => setLiquidityData({ ...liquidityData, description: e.target.value })}
+                />
+              </div>
+              <div className="flex justify-end space-x-3 mt-6">
+                <button type="button" onClick={() => setShowLiquidityForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Enregistrer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="divide-y divide-gray-100">
           {[...digitalTransactions].filter(t => {
@@ -1382,8 +1469,8 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
           }).slice(0, 10).map(t => (
             <div key={t.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
               <div className="flex items-center space-x-4">
-                <div className={`p-3 rounded-full ${t.type === 'sale' || t.type === 'other_revenue' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                  {t.type === 'sale' || t.type === 'other_revenue' ? <ArrowDown size={20} /> : <ArrowUp size={20} />}
+                <div className={`p-3 rounded-full ${t.type === 'sale' || t.type === 'other_revenue' || t.type === 'liquidity_add' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                  {t.type === 'sale' || t.type === 'other_revenue' || t.type === 'liquidity_add' ? <ArrowDown size={20} /> : <ArrowUp size={20} />}
                 </div>
                 <div>
                   <h4 className="font-semibold text-gray-800">{t.item_name || t.notes || 'Transaction'}</h4>
@@ -1400,8 +1487,8 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
                   </div>
                 </div>
               </div>
-              <div className={`text-lg font-bold ${t.type === 'sale' || t.type === 'other_revenue' ? 'text-green-600' : 'text-red-600'}`}>
-                {t.type === 'sale' || t.type === 'other_revenue' ? '+' : '-'}{formatCurrency(t.amount)}
+              <div className={`text-lg font-bold ${t.type === 'sale' || t.type === 'other_revenue' || t.type === 'liquidity_add' ? 'text-green-600' : 'text-red-600'}`}>
+                {t.type === 'sale' || t.type === 'other_revenue' || t.type === 'liquidity_add' ? '+' : '-'}{formatCurrency(t.amount)}
               </div>
             </div>
           ))}

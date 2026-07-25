@@ -5019,6 +5019,8 @@ const SettingsView = ({ deliveryConfig, setDeliveryConfig, packagingConfig, setP
 
 const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, bankAccounts, setBankAccounts, supabase, t }) => {
   const [showForm, setShowForm] = useState(false);
+  const [showLiquidityForm, setShowLiquidityForm] = useState(false);
+  const [liquidityData, setLiquidityData] = useState({ accountId: '', amount: 0, description: 'Ajout de liquidité', action: 'add' });
   const [formData, setFormData] = useState({ name: '', type: 'bank', initialBalance: 0 });
   const [selectedAccount, setSelectedAccount] = useState(null);
 
@@ -5033,8 +5035,8 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
 
       // Regular transactions mapped to this account
       if (tx.bank_account_id === accountId) {
-        if (tx.type === 'sale') balance += parseFloat(tx.amount || 0);
-        else if (tx.type === 'purchase' || tx.type === 'expense') balance -= parseFloat(tx.amount || 0);
+        if (tx.type === 'sale' || tx.type === 'liquidity_add') balance += parseFloat(tx.amount || 0);
+        else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'liquidity_remove') balance -= parseFloat(tx.amount || 0);
         else if (tx.type === 'transfer_out') balance -= parseFloat(tx.amount || 0);
       }
 
@@ -5066,11 +5068,11 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
     : 0;
 
   const trueTotalEntrees = transactions
-    .filter(t => t.status === 'completed' && t.type === 'sale' && t.bank_account_id)
+    .filter(t => t.status === 'completed' && (t.type === 'sale' || t.type === 'liquidity_add') && t.bank_account_id)
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
   const trueTotalSorties = transactions
-    .filter(t => t.status === 'completed' && (t.type === 'purchase' || t.type === 'expense') && t.bank_account_id)
+    .filter(t => t.status === 'completed' && (t.type === 'purchase' || t.type === 'expense' || t.type === 'liquidity_remove') && t.bank_account_id)
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
   const handleAddAccount = async (e) => {
@@ -5105,6 +5107,29 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
       }
     }
   };
+
+  const handleLiquiditySubmit = async (e) => {
+    e.preventDefault();
+    if (!liquidityData.accountId || !liquidityData.amount) return;
+    const isAdd = liquidityData.action === 'add';
+    const tx = {
+      date: new Date().toISOString().split('T')[0],
+      type: isAdd ? 'liquidity_add' : 'liquidity_remove',
+      item_name: liquidityData.description,
+      amount: parseFloat(liquidityData.amount),
+      status: 'completed',
+      bank_account_id: liquidityData.accountId
+    };
+    const { data, error } = await supabase.from('transactions').insert([tx]).select();
+    if (error) {
+      alert("Erreur: " + error.message);
+    } else {
+      setShowLiquidityForm(false);
+      setLiquidityData({ accountId: '', amount: 0, description: 'Ajout de liquidité', action: 'add' });
+      window.location.reload();
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -5211,7 +5236,9 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
             <ArrowRightLeft size={16} />
             <span>{t('internalTransfer')}</span>
           </button>
-          <button className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
+          <button 
+            onClick={() => setShowLiquidityForm(true)}
+            className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
             <Plus size={16} />
             <span>{t('adjustBalance')}</span>
           </button>
@@ -5228,6 +5255,67 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
           </button>
         </div>
       </div>
+
+      {showLiquidityForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+            <h4 className="text-lg font-bold mb-4 text-gray-800">Ajouter / Retirer Liquidité</h4>
+            <form onSubmit={handleLiquiditySubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Action</label>
+                <select 
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={liquidityData.action}
+                  onChange={e => setLiquidityData({ ...liquidityData, action: e.target.value })}
+                >
+                  <option value="add">Ajouter (Entrée)</option>
+                  <option value="remove">Retirer (Sortie)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Compte</label>
+                <select 
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={liquidityData.accountId}
+                  onChange={e => setLiquidityData({ ...liquidityData, accountId: e.target.value })}
+                >
+                  <option value="">Sélectionner un compte</option>
+                  {bankAccounts.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Montant</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  min="0"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={liquidityData.amount}
+                  onChange={e => setLiquidityData({ ...liquidityData, amount: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Description</label>
+                <input
+                  type="text"
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                  value={liquidityData.description}
+                  onChange={e => setLiquidityData({ ...liquidityData, description: e.target.value })}
+                />
+              </div>
+              <div className="flex justify-end space-x-3 mt-6">
+                <button type="button" onClick={() => setShowLiquidityForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Annuler</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Enregistrer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
