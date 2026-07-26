@@ -5023,6 +5023,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
   const [liquidityData, setLiquidityData] = useState({ accountId: '', amount: 0, description: 'Ajout de liquidité', action: 'add' });
   const [formData, setFormData] = useState({ name: '', type: 'bank', initialBalance: 0 });
   const [selectedAccount, setSelectedAccount] = useState(null);
+  const [selectedKpi, setSelectedKpi] = useState(null); // 'solde_global', 'total_entrees', 'total_sorties', 'comptes_actifs'
 
   // Computations
   const getAccountBalance = (accountId) => {
@@ -5154,7 +5155,10 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+        <div 
+          onClick={() => setSelectedKpi('solde_global')}
+          className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow"
+        >
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
               <WalletCards size={20} />
@@ -5164,7 +5168,10 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
           <p className="text-3xl font-bold text-gray-900">{formatCurrency(soldeGlobal)}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+        <div 
+          onClick={() => setSelectedKpi('total_entrees')}
+          className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow"
+        >
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-green-50 text-green-600 rounded-lg">
               <ArrowDown size={20} />
@@ -5174,7 +5181,10 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
           <p className="text-3xl font-bold text-gray-900">{formatCurrency(trueTotalEntrees)}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+        <div 
+          onClick={() => setSelectedKpi('total_sorties')}
+          className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow"
+        >
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-red-50 text-red-600 rounded-lg">
               <ArrowUp size={20} />
@@ -5184,7 +5194,10 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
           <p className="text-3xl font-bold text-gray-900">{formatCurrency(trueTotalSorties)}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+        <div 
+          onClick={() => setSelectedKpi('comptes_actifs')}
+          className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow"
+        >
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
               <Landmark size={20} />
@@ -5409,6 +5422,118 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
           </table>
         </div>
       </div>
+
+      {/* KPI Details Modal */}
+      {selectedKpi && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b flex justify-between items-center">
+              <h4 className="text-xl font-bold text-gray-800">
+                {selectedKpi === 'solde_global' && 'Détails du Solde Global'}
+                {selectedKpi === 'total_entrees' && 'Détails des Entrées'}
+                {selectedKpi === 'total_sorties' && 'Détails des Sorties'}
+                {selectedKpi === 'comptes_actifs' && 'Liste des Comptes Actifs'}
+              </h4>
+              <button onClick={() => setSelectedKpi(null)} className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              {selectedKpi === 'comptes_actifs' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {bankAccounts.map(account => (
+                    <div key={account.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow relative">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center space-x-2">
+                          <Wallet className="text-blue-500" size={20} />
+                          <h4 className="font-bold text-gray-800">{account.name}</h4>
+                        </div>
+                        <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600 capitalize">{account.type}</span>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900 mt-4">{formatCurrency(getAccountBalance(account.id))}</p>
+                    </div>
+                  ))}
+                  {bankAccounts.length === 0 && <p className="text-gray-500 col-span-3 text-center py-4">Aucun compte actif.</p>}
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Compte</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Montant</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {transactions
+                      .filter(t => {
+                        if (t.status !== 'completed') return false;
+                        if (!t.bank_account_id && !t.to_bank_account_id) return false;
+                        if (selectedKpi === 'total_entrees') {
+                          return (t.type === 'sale' || t.type === 'liquidity_add') && t.bank_account_id;
+                        }
+                        if (selectedKpi === 'total_sorties') {
+                          return (t.type === 'purchase' || t.type === 'expense' || t.type === 'liquidity_remove') && t.bank_account_id;
+                        }
+                        // For solde_global, show everything affecting banks
+                        return true;
+                      })
+                      .sort((a, b) => new Date(b.date) - new Date(a.date))
+                      .map((tx) => {
+                        const isIncoming = tx.type === 'sale' || tx.type === 'transfer_in' || tx.type === 'liquidity_add';
+                        const isTransfer = tx.type === 'transfer';
+                        const account = bankAccounts.find(b => b.id === tx.bank_account_id);
+                        const toAccount = bankAccounts.find(b => b.id === tx.to_bank_account_id);
+                        
+                        let displayAccountName = account?.name || '-';
+                        if (isTransfer && toAccount) {
+                          displayAccountName = `${account?.name || '-'} ➔ ${toAccount.name}`;
+                        }
+                        
+                        return (
+                          <tr key={tx.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{tx.date}</td>
+                            <td className="px-6 py-4 text-sm whitespace-nowrap">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${isIncoming ? 'bg-green-100 text-green-700' : isTransfer ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+                                {t(tx.type)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{displayAccountName}</td>
+                            <td className={`px-6 py-4 text-sm font-bold whitespace-nowrap ${isIncoming ? 'text-green-600' : isTransfer ? 'text-blue-600' : 'text-red-600'}`}>
+                              {isIncoming ? '+' : isTransfer ? '' : '-'}{formatCurrency(tx.amount)}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={tx.notes || tx.item_name || tx.party || tx.category || '-'}>{tx.notes || tx.item_name || tx.party || tx.category || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                      
+                      {transactions.filter(t => {
+                        if (t.status !== 'completed') return false;
+                        if (!t.bank_account_id && !t.to_bank_account_id) return false;
+                        if (selectedKpi === 'total_entrees') return (t.type === 'sale' || t.type === 'liquidity_add') && t.bank_account_id;
+                        if (selectedKpi === 'total_sorties') return (t.type === 'purchase' || t.type === 'expense' || t.type === 'liquidity_remove') && t.bank_account_id;
+                        return true;
+                      }).length === 0 && (
+                        <tr>
+                          <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
+                            Aucune transaction trouvée.
+                          </td>
+                        </tr>
+                      )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="p-4 border-t flex justify-end">
+              <button onClick={() => setSelectedKpi(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
