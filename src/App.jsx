@@ -1234,6 +1234,7 @@ function App() {
               transactions={transactions}
               inventory={inventory}
               totalSupplierDebts={totalSupplierDebts}
+              suppliers={suppliers}
               t={t}
             />
           )}
@@ -1415,17 +1416,18 @@ function App() {
 
 // --- Placeholder Sub-Components ---
 
-const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, transactions, inventory, totalSupplierDebts, t }) => {
+const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, transactions, inventory, totalSupplierDebts, suppliers, t }) => {
   const recentTransactions = transactions.slice(0, 5);
+  const [selectedKpi, setSelectedKpi] = useState(null); // 'income', 'expenses', 'profit', 'inventory', 'suppliers'
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <MetricCard title={t('totalIncome')} value={totalIncome} icon={TrendingUp} color="green" />
-        <MetricCard title={t('totalExpenses')} value={totalExpenses} icon={TrendingDown} color="red" />
-        <MetricCard title={t('netProfit')} value={netProfit} icon={ArrowRightLeft} color={netProfit >= 0 ? 'blue' : 'red'} />
-        <MetricCard title={t('inventoryValue')} value={inventoryValue} icon={Package} color="purple" />
-        <MetricCard title="Total Dettes Fournisseurs" value={totalSupplierDebts} icon={TrendingDown} color="orange" />
+        <MetricCard onClick={() => setSelectedKpi('income')} title={t('totalIncome')} value={totalIncome} icon={TrendingUp} color="green" />
+        <MetricCard onClick={() => setSelectedKpi('expenses')} title={t('totalExpenses')} value={totalExpenses} icon={TrendingDown} color="red" />
+        <MetricCard onClick={() => setSelectedKpi('profit')} title={t('netProfit')} value={netProfit} icon={ArrowRightLeft} color={netProfit >= 0 ? 'blue' : 'red'} />
+        <MetricCard onClick={() => setSelectedKpi('inventory')} title={t('inventoryValue')} value={inventoryValue} icon={Package} color="purple" />
+        <MetricCard onClick={() => setSelectedKpi('suppliers')} title="Total Dettes Fournisseurs" value={totalSupplierDebts} icon={TrendingDown} color="orange" />
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -1466,9 +1468,9 @@ const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, tran
                       tItem.party || tItem.category || '-'
                     )}
                   </td>
-                  <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
+                  <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-medium ${tItem.type === 'sale' || tItem.type === 'liquidity_add' ? 'text-green-600' : 'text-red-600'
                     }`}>
-                    {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount)}
+                    {tItem.type === 'sale' || tItem.type === 'liquidity_add' ? '+' : '-'}{formatCurrency(tItem.amount)}
                   </td>
                 </tr>
               ))}
@@ -1481,20 +1483,202 @@ const Dashboard = ({ totalIncome, totalExpenses, netProfit, inventoryValue, tran
           </table>
         </div>
       </div>
+
+      {/* KPI Details Modal */}
+      {selectedKpi && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-5xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b flex justify-between items-center">
+              <h4 className="text-xl font-bold text-gray-800">
+                {selectedKpi === 'income' && 'Détails des Entrées (Revenus)'}
+                {selectedKpi === 'expenses' && 'Détails des Dépenses (Achats & Frais)'}
+                {selectedKpi === 'profit' && 'Détails du Bénéfice Net (Ventes, Achats & Frais)'}
+                {selectedKpi === 'inventory' && 'Valeur du Stock par Produit'}
+                {selectedKpi === 'suppliers' && 'Dettes envers les Fournisseurs'}
+              </h4>
+              <button onClick={() => setSelectedKpi(null)} className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              {selectedKpi === 'inventory' ? (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Produit</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Quantité</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Prix d'Achat (Unité)</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Valeur Totale</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {inventory.map(item => (
+                      <tr key={item.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.name}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{item.quantity}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{formatCurrency(item.buy_price)}</td>
+                        <td className="px-6 py-4 text-sm font-bold text-purple-600">{formatCurrency(parseFloat(item.buy_price || 0) * parseInt(item.quantity || 0))}</td>
+                      </tr>
+                    ))}
+                    {inventory.length === 0 && <tr><td colSpan="4" className="text-center py-4 text-gray-500">Aucun produit en stock</td></tr>}
+                  </tbody>
+                </table>
+              ) : selectedKpi === 'suppliers' ? (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Fournisseur</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Contact</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Dette (Balance)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {suppliers.map(supplier => {
+                      // Recalculate balance for each supplier to show in table
+                      const histPurchases = parseFloat(supplier.historical_purchases || 0);
+                      const histPaid = parseFloat(supplier.historical_paid || 0);
+                      const supplierPurchases = transactions.filter(t => t.type === 'purchase' && t.party === supplier.name && (t.status === 'completed' || t.status === 'pending'));
+                      const supplierPayments = transactions.filter(t => t.type === 'expense' && t.category === 'Supplier Payment' && t.party === supplier.name && t.status === 'completed');
+                      const totalPurchases = histPurchases + supplierPurchases.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                      const paidViaCompletedPurchases = supplierPurchases.filter(t => t.status === 'completed').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                      const paidViaPartialPayments = supplierPayments.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                      const paid = histPaid + paidViaCompletedPurchases + paidViaPartialPayments;
+                      const balance = totalPurchases - paid;
+                      
+                      return (
+                        <tr key={supplier.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 text-sm font-medium text-gray-900">{supplier.name}</td>
+                          <td className="px-6 py-4 text-sm text-gray-500">{supplier.phone || supplier.email || '-'}</td>
+                          <td className="px-6 py-4 text-sm font-bold text-orange-600">{formatCurrency(balance > 0 ? balance : 0)}</td>
+                        </tr>
+                      );
+                    })}
+                    {suppliers.length === 0 && <tr><td colSpan="3" className="text-center py-4 text-gray-500">Aucun fournisseur trouvé</td></tr>}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Détails</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Montant</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {(() => {
+                      const displayRows = [];
+                      transactions.forEach(tItem => {
+                        // Income
+                        if (selectedKpi === 'income' || selectedKpi === 'profit') {
+                          if (tItem.type === 'sale' && tItem.status === 'completed') {
+                            displayRows.push({
+                              ...tItem,
+                              displayType: 'sale',
+                              displayAmount: parseFloat(tItem.amount || 0),
+                              isPositive: true,
+                              displayTitle: tItem.item_id
+                                ? `${inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item'} ${tItem.quantity ? '(x' + tItem.quantity + ')' : ''} ${tItem.party ? '- ' + tItem.party : ''}`
+                                : (tItem.party || tItem.category || tItem.notes || '-')
+                            });
+                          }
+                        }
+
+                        // Expenses & Purchases
+                        if (selectedKpi === 'expenses' || selectedKpi === 'profit') {
+                          if (tItem.status === 'completed' && (tItem.type === 'expense' || tItem.type === 'purchase')) {
+                            displayRows.push({
+                              ...tItem,
+                              displayType: tItem.type,
+                              displayAmount: parseFloat(tItem.amount || 0),
+                              isPositive: false,
+                              displayTitle: tItem.item_id
+                                ? `${inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item'} ${tItem.quantity ? '(x' + tItem.quantity + ')' : ''} ${tItem.party ? '- ' + tItem.party : ''}`
+                                : (tItem.party || tItem.category || tItem.notes || '-')
+                            });
+                          }
+
+                          // Operating Expenses from Sales
+                          if (tItem.type === 'sale') {
+                            const delivery = parseFloat(tItem.delivery_cost || 0);
+                            const packaging = parseFloat(tItem.packaging_cost || 0);
+                            const itemName = inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item';
+
+                            if (tItem.status === 'completed') {
+                              if (delivery > 0) {
+                                displayRows.push({ ...tItem, id: tItem.id + '-del', displayType: 'expense', displayAmount: delivery, isPositive: false, displayTitle: `Frais de Livraison (${itemName})` });
+                              }
+                              if (packaging > 0) {
+                                displayRows.push({ ...tItem, id: tItem.id + '-pkg', displayType: 'expense', displayAmount: packaging, isPositive: false, displayTitle: `Frais d'Emballage (${itemName})` });
+                              }
+                            } else if (tItem.status === 'refused') {
+                              if (packaging > 0) {
+                                displayRows.push({ ...tItem, id: tItem.id + '-pkg', displayType: 'expense', displayAmount: packaging, isPositive: false, displayTitle: `Frais d'Emballage (Refusé - ${itemName})` });
+                              }
+                            }
+                          }
+                        }
+                      });
+
+                      if (displayRows.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                              Aucune transaction enregistrée.
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return displayRows
+                        .sort((a, b) => new Date(b.date) - new Date(a.date))
+                        .map((row) => (
+                          <tr key={row.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{row.date}</td>
+                            <td className="px-6 py-4 text-sm whitespace-nowrap">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${row.displayType === 'sale' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {t(row.displayType)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-700">
+                              {row.displayTitle}
+                            </td>
+                            <td className={`px-6 py-4 text-sm font-bold whitespace-nowrap ${row.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                              {row.isPositive ? '+' : '-'}{formatCurrency(row.displayAmount)}
+                            </td>
+                          </tr>
+                        ));
+                    })()}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="p-4 border-t flex justify-end">
+              <button onClick={() => setSelectedKpi(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const MetricCard = ({ title, value, icon: Icon, color }) => {
+const MetricCard = ({ title, value, icon: Icon, color, onClick }) => {
   const colorClasses = {
     green: 'bg-green-50 text-green-600',
     red: 'bg-red-50 text-red-600',
     blue: 'bg-blue-50 text-blue-600',
     purple: 'bg-purple-50 text-purple-600',
+    orange: 'bg-orange-50 text-orange-600',
   };
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
+    <div 
+      onClick={onClick}
+      className={`bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+    >
       <div className={`p-3 rounded-full ${colorClasses[color]}`}>
         <Icon size={24} />
       </div>
