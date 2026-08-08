@@ -1158,7 +1158,7 @@ export const DigitalInventoryManager = ({ digitalInventory, digitalTransactions,
   );
 };
 
-export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supabase }) => {
+export const DigitalTreasuryManager = ({ transactions, digitalTransactions, bankAccounts, allBankAccounts, supabase }) => {
   const [showForm, setShowForm] = useState(false);
   const [showLiquidityForm, setShowLiquidityForm] = useState(false);
   const [liquidityData, setLiquidityData] = useState({ accountId: '', amount: 0, description: 'Ajout de liquidité', action: 'add' });
@@ -1166,26 +1166,53 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
   const [sortOption, setSortOption] = useState('date_desc');
   const [typeFilter, setTypeFilter] = useState('all');
   const [selectedKpi, setSelectedKpi] = useState(null); // 'solde_global', 'total_entrees', 'total_sorties', 'comptes_actifs'
+  const [showInternalTransfer, setShowInternalTransfer] = useState(false);
+  const [transferData, setTransferData] = useState({ fromAccountId: '', toAccountId: '', amount: '', notes: '' });
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'MAD' }).format(amount);
   };
 
   const getDigitalAccountBalance = (accountId) => {
-    // We only calculate based on digital transactions for this digital view.
-    // However, if we want the true global balance, we'd need physical transactions too.
-    // For now, we show the sub-balance of digital activity for that account, 
-    // OR we can just show the real account balance if we had access to it. 
-    // Since we don't have physical transactions here, we'll calculate the digital contribution.
     const account = bankAccounts.find(b => b.id === accountId);
     if (!account) return 0;
     
-    let balance = 0; 
+    let balance = parseFloat(account.initial_balance || 0); 
     digitalTransactions.forEach(tx => {
       if (tx.bank_account_id === accountId) {
-        if (tx.type === 'sale' || tx.type === 'liquidity_add') balance += parseFloat(tx.amount || 0);
-        else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'supplier_payment' || tx.type === 'liquidity_remove') balance -= parseFloat(tx.amount || 0);
+        if (tx.type === 'sale' || tx.type === 'liquidity_add' || tx.type === 'transfer_in') balance += parseFloat(tx.amount || 0);
+        else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'supplier_payment' || tx.type === 'liquidity_remove' || tx.type === 'transfer_out') balance -= parseFloat(tx.amount || 0);
       }
     });
+    return balance;
+  };
+
+  const getAccountBalance = (accountId) => {
+    const account = (allBankAccounts || bankAccounts).find(b => b.id === accountId);
+    if (!account) return 0;
+    let balance = parseFloat(account.initial_balance || 0);
+
+    if (account.type?.endsWith('_digital')) {
+      if (digitalTransactions) {
+        digitalTransactions.forEach(tx => {
+          if (tx.bank_account_id === accountId) {
+            if (tx.type === 'sale' || tx.type === 'liquidity_add' || tx.type === 'transfer_in') balance += parseFloat(tx.amount || 0);
+            else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'supplier_payment' || tx.type === 'liquidity_remove' || tx.type === 'transfer_out') balance -= parseFloat(tx.amount || 0);
+          }
+        });
+      }
+    } else {
+      if (transactions) {
+        transactions.forEach(tx => {
+          if (tx.status !== 'completed') return;
+          if (tx.bank_account_id === accountId) {
+            if (tx.type === 'sale' || tx.type === 'liquidity_add' || tx.type === 'transfer_in') balance += parseFloat(tx.amount || 0);
+            else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'liquidity_remove' || tx.type === 'transfer_out') balance -= parseFloat(tx.amount || 0);
+          }
+          if (tx.to_bank_account_id === accountId && tx.type === 'transfer') balance += parseFloat(tx.amount || 0);
+          if (tx.bank_account_id === accountId && tx.type === 'transfer') balance -= parseFloat(tx.amount || 0);
+        });
+      }
+    }
     return balance;
   };
 
@@ -1246,6 +1273,76 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
     } else {
       setShowLiquidityForm(false);
       setLiquidityData({ accountId: '', amount: 0, description: 'Ajout de liquidité', action: 'add' });
+      window.location.reload();
+    }
+  };
+
+  const handleTransferSubmit = async (e) => {
+    e.preventDefault();
+    const fromId = transferData.fromAccountId;
+    const toId = transferData.toAccountId;
+    const amount = parseFloat(transferData.amount);
+    if (!fromId || !toId || !amount || fromId === toId) return alert('Veuillez remplir tous les champs correctement.');
+
+    const fromAccount = (allBankAccounts || bankAccounts).find(b => b.id === fromId);
+    const toAccount = (allBankAccounts || bankAccounts).find(b => b.id === toId);
+    
+    if (!fromAccount || !toAccount) return;
+
+    const isFromDigital = fromAccount.type.endsWith('_digital');
+    const isToDigital = toAccount.type.endsWith('_digital');
+
+    let error = null;
+
+    if (!isFromDigital && !isToDigital) {
+      // Both physical -> single transfer transaction
+      const tx = {
+        date: new Date().toISOString().split('T')[0],
+        type: 'transfer',
+        item_name: `Virement vers ${toAccount.name}` + (transferData.notes ? ` - ${transferData.notes}` : ''),
+        amount: amount,
+        bank_account_id: fromId,
+        to_bank_account_id: toId,
+        status: 'completed'
+      };
+      const res = await supabase.from('transactions').insert([tx]);
+      error = res.error;
+    } else {
+      // Cross or both digital -> use transfer_out and transfer_in
+      const txOut = {
+        date: new Date().toISOString().split('T')[0],
+        type: 'transfer_out',
+        item_name: `Virement sortant vers ${toAccount.name}` + (transferData.notes ? ` - ${transferData.notes}` : ''),
+        amount: amount,
+        bank_account_id: fromId,
+        status: 'completed'
+      };
+      
+      const txIn = {
+        date: new Date().toISOString().split('T')[0],
+        type: 'transfer_in',
+        item_name: `Virement entrant de ${fromAccount.name}` + (transferData.notes ? ` - ${transferData.notes}` : ''),
+        amount: amount,
+        bank_account_id: toId,
+        status: 'completed'
+      };
+
+      const tableOut = isFromDigital ? 'digital_transactions' : 'transactions';
+      const tableIn = isToDigital ? 'digital_transactions' : 'transactions';
+
+      const resOut = await supabase.from(tableOut).insert([txOut]);
+      if (resOut.error) error = resOut.error;
+      else {
+        const resIn = await supabase.from(tableIn).insert([txIn]);
+        if (resIn.error) error = resIn.error;
+      }
+    }
+
+    if (error) {
+      alert("Erreur lors du virement: " + error.message);
+    } else {
+      setShowInternalTransfer(false);
+      setTransferData({ fromAccountId: '', toAccountId: '', amount: '', notes: '' });
       window.location.reload();
     }
   };
@@ -1353,9 +1450,100 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
                  <p className="text-2xl font-bold text-gray-900 mt-4">{formatCurrency(getDigitalAccountBalance(account.id))}</p>
                </div>
              ))}
-          </div>
+           </div>
         )}
       </div>
+
+      {/* Internal Transfer Modal */}
+      {showInternalTransfer && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="text-lg font-bold text-gray-800">Virement Interne</h4>
+              <button onClick={() => setShowInternalTransfer(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleTransferSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">De (Compte Source)</label>
+                <select
+                  required
+                  className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-blue-500"
+                  value={transferData.fromAccountId}
+                  onChange={(e) => setTransferData({ ...transferData, fromAccountId: e.target.value })}
+                >
+                  <option value="">Sélectionner un compte source...</option>
+                  {allBankAccounts.map(b => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.type.endsWith('_digital') ? 'Digital' : 'Physique'} - Solde: {formatCurrency(getAccountBalance(b.id))})</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex justify-center -my-2 relative z-10">
+                <div className="bg-gray-100 p-2 rounded-full border border-gray-200">
+                  <ArrowDown size={16} className="text-gray-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Vers (Compte Destination)</label>
+                <select
+                  required
+                  className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-blue-500"
+                  value={transferData.toAccountId}
+                  onChange={(e) => setTransferData({ ...transferData, toAccountId: e.target.value })}
+                >
+                  <option value="">Sélectionner un compte destination...</option>
+                  {allBankAccounts.filter(b => b.id !== transferData.fromAccountId).map(b => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.type.endsWith('_digital') ? 'Digital' : 'Physique'} - Solde: {formatCurrency(getAccountBalance(b.id))})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Montant (MAD)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  min="0.01"
+                  className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-blue-500"
+                  value={transferData.amount}
+                  onChange={(e) => setTransferData({ ...transferData, amount: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes / Motif (Optionnel)</label>
+                <input
+                  type="text"
+                  className="w-full border-gray-300 rounded-lg p-2 border focus:ring-2 focus:ring-blue-500"
+                  value={transferData.notes}
+                  placeholder="Ex: Transfert vers caisse digitale"
+                  onChange={(e) => setTransferData({ ...transferData, notes: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowInternalTransfer(false)}
+                  className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                >
+                  <CheckCircle size={18} className="mr-2" /> Valider le Virement
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
         <h4 className="font-bold text-gray-800 text-lg">Transactions Récentes</h4>
@@ -1381,7 +1569,10 @@ export const DigitalTreasuryManager = ({ digitalTransactions, bankAccounts, supa
             <option value="amount_desc">Montant (Plus élevé)</option>
             <option value="amount_asc">Montant (Plus bas)</option>
           </select>
-          <button className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap">
+          <button 
+            onClick={() => setShowInternalTransfer(true)}
+            className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-50 border rounded-lg font-medium text-sm whitespace-nowrap"
+          >
             <ArrowRightLeft size={16} />
             <span>Internal Transfer</span>
           </button>
