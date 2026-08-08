@@ -1704,6 +1704,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
   const [partyFilter, setPartyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
   const [deliveryFilter, setDeliveryFilter] = useState('');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' }); // New Sort State
   const [selectedTransactions, setSelectedTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
@@ -1754,8 +1755,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
         (t.category && t.category.toLowerCase().includes(itemFilter.toLowerCase()));
 
       const deliveryMatch = !deliveryFilter || (t.delivery_company === deliveryFilter);
+      const paymentMatch = !paymentMethodFilter || t.bank_account_id === paymentMethodFilter;
 
-      return dateMatch && typeMatch && statusMatch && settledMatch && partyMatch && itemMatch && deliveryMatch;
+      return dateMatch && typeMatch && statusMatch && settledMatch && partyMatch && itemMatch && deliveryMatch && paymentMatch;
     });
 
     // Sorting Logic
@@ -1785,7 +1787,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
     }
 
     setFilteredTransactions(result);
-  }, [transactions, dateFilter, typeFilter, statusFilter, settledFilter, partyFilter, itemFilter, deliveryFilter, sortConfig, inventory]);
+  }, [transactions, dateFilter, typeFilter, statusFilter, settledFilter, partyFilter, itemFilter, deliveryFilter, paymentMethodFilter, sortConfig, inventory]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -2317,7 +2319,18 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               ))}
             </select>
 
-            {(dateFilter.start || dateFilter.end || typeFilter || statusFilter || settledFilter || partyFilter || itemFilter || deliveryFilter) && (
+            <select
+              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-sm"
+              value={paymentMethodFilter}
+              onChange={e => setPaymentMethodFilter(e.target.value)}
+            >
+              <option value="">Méthode de paiement</option>
+              {bankAccounts && bankAccounts.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+
+            {(dateFilter.start || dateFilter.end || typeFilter || statusFilter || settledFilter || partyFilter || itemFilter || deliveryFilter || paymentMethodFilter) && (
               <button
                 onClick={() => {
                   setDateFilter({ start: '', end: '' });
@@ -2327,6 +2340,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                   setPartyFilter('');
                   setItemFilter('');
                   setDeliveryFilter('');
+                  setPaymentMethodFilter('');
                 }}
                 className="text-sm text-red-600 hover:text-red-800"
               >
@@ -2801,6 +2815,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                 >
                   {t('item')} {sortConfig.key === 'item' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                  Méthode Paiement
+                </th>
                 <th
                   className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('amount')}
@@ -2870,6 +2887,9 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
                     {tItem.item_id ? (inventory.find(i => i.id === tItem.item_id)?.name || 'Unknown Item') : tItem.category}
                     {tItem.quantity && ` (x${tItem.quantity})`}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {(bankAccounts || []).find(b => b.id === tItem.bank_account_id)?.name || '-'}
+                  </td>
                   <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${tItem.type === 'sale' ? 'text-green-600' : 'text-red-600'
                     }`}>
                     {tItem.type === 'sale' ? '+' : '-'}{formatCurrency(tItem.amount || 0)}
@@ -2889,7 +2909,7 @@ const TransactionManager = ({ transactions, setTransactions, inventory, setInven
               ))}
               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan="9" className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan="10" className="px-6 py-12 text-center text-gray-500">
                     {t('noTransactions')}
                   </td>
                 </tr>
@@ -5224,7 +5244,8 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
       if (digitalTransactions) {
         digitalTransactions.forEach(tx => {
           if (tx.bank_account_id === accountId) {
-            if (tx.type === 'sale' || tx.type === 'liquidity_add' || tx.type === 'transfer_in') balance += parseFloat(tx.amount || 0);
+            if (tx.type === 'sale') balance += parseFloat(tx.amount || 0) - parseFloat(tx.delivery_cost || 0) - parseFloat(tx.packaging_cost || 0);
+            else if (tx.type === 'liquidity_add' || tx.type === 'transfer_in') balance += parseFloat(tx.amount || 0);
             else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'supplier_payment' || tx.type === 'liquidity_remove' || tx.type === 'transfer_out') balance -= parseFloat(tx.amount || 0);
           }
         });
@@ -5235,7 +5256,8 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
 
         // Regular transactions mapped to this account
         if (tx.bank_account_id === accountId) {
-          if (tx.type === 'sale' || tx.type === 'liquidity_add' || tx.type === 'transfer_in') balance += parseFloat(tx.amount || 0);
+          if (tx.type === 'sale') balance += parseFloat(tx.amount || 0) - parseFloat(tx.delivery_cost || 0) - parseFloat(tx.packaging_cost || 0);
+          else if (tx.type === 'liquidity_add' || tx.type === 'transfer_in') balance += parseFloat(tx.amount || 0);
           else if (tx.type === 'purchase' || tx.type === 'expense' || tx.type === 'liquidity_remove' || tx.type === 'transfer_out') balance -= parseFloat(tx.amount || 0);
         }
 
@@ -5269,7 +5291,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
 
   const trueTotalEntrees = transactions
     .filter(t => t.status === 'completed' && (t.type === 'sale' || t.type === 'liquidity_add') && t.bank_account_id)
-    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+    .reduce((sum, t) => sum + parseFloat(t.amount || 0) - (t.type === 'sale' ? (parseFloat(t.delivery_cost || 0) + parseFloat(t.packaging_cost || 0)) : 0), 0);
 
   const trueTotalSorties = transactions
     .filter(t => t.status === 'completed' && (t.type === 'purchase' || t.type === 'expense' || t.type === 'liquidity_remove') && t.bank_account_id)
@@ -5507,7 +5529,6 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
               </div>
             ))}
           </div>
-        )}
         )}
       </div>
 
@@ -5769,9 +5790,9 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{account?.name || '-'}</td>
                     <td className={`px-6 py-4 text-sm font-bold ${isIncoming ? 'text-green-600' : 'text-red-600'}`}>
-                      {isIncoming ? '+' : '-'}{formatCurrency(tx.amount)}
+                      {isIncoming ? '+' : '-'}{formatCurrency(tx.type === 'sale' ? (parseFloat(tx.amount || 0) - parseFloat(tx.delivery_cost || 0) - parseFloat(tx.packaging_cost || 0)) : parseFloat(tx.amount || 0))}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{tx.notes || tx.party || tx.category || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{tx.item_name || tx.notes || tx.party || tx.category || '-'}</td>
                   </tr>
                 );
               })}
@@ -5867,7 +5888,7 @@ const TreasuryManager = ({ transactions, digitalTransactions, setTransactions, b
                             </td>
                             <td className="px-6 py-4 text-sm font-medium text-gray-900">{displayAccountName}</td>
                             <td className={`px-6 py-4 text-sm font-bold whitespace-nowrap ${isIncoming ? 'text-green-600' : isTransfer ? 'text-blue-600' : 'text-red-600'}`}>
-                              {isIncoming ? '+' : isTransfer ? '' : '-'}{formatCurrency(tx.amount)}
+                              {isIncoming ? '+' : isTransfer ? '' : '-'}{formatCurrency(tx.type === 'sale' ? (parseFloat(tx.amount || 0) - parseFloat(tx.delivery_cost || 0) - parseFloat(tx.packaging_cost || 0)) : parseFloat(tx.amount || 0))}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={tx.notes || tx.item_name || tx.party || tx.category || '-'}>{tx.notes || tx.item_name || tx.party || tx.category || '-'}</td>
                           </tr>
